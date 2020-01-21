@@ -15,5 +15,5 @@ sudo pip3 install tensorflow
 CoreML Tools
 
 ```
-sudo pip3 install --upgrade coremltools
+sudo pip3 install --upgrade tfcoreml
 ```

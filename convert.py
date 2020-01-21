@@ -7,7 +7,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow import keras as k
 
-import coremltools
+import tfcoreml
 
 import custom_layers
 
@@ -66,10 +66,8 @@ def keras2coreml(keras_model_path, cml_model_path, config_path, layer_index=-1):
     print(input_name, graph_output_node_name)
 
     # Convert this model to Core ML format
-    cml_model = coremltools.converters.tensorflow.convert(
-                            #keras_model,
-                            filename=keras_model_path.rsplit('.', 1)[0] + '/saved_model.pb',
-                            #tf_model_path=keras_model,
+    cml_model = tfcoreml.convert(
+                            tf_model_path=keras_model_path.rsplit('.', 1)[0] + '/saved_model.pb',
                             input_name_shape_dict={input_name: (144000)}, # Sample rate * signal length = 48000 * 3 = 144000
                             output_feature_names=[graph_output_node_name],
                             minimum_ios_deployment_target='13',
