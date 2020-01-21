@@ -7,7 +7,6 @@ import numpy as np
 import tensorflow as tf
 from tensorflow import keras as k
 
-import tfcoreml
 import coremltools
 
 import custom_layers
