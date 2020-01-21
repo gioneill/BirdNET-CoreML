@@ -12,7 +12,7 @@ import coremltools
 
 import custom_layers
 
-KERAS_MODEL_FILE = 'model/BirdNET_1000_RAW.h5'
+KERAS_MODEL_FILE = 'model/BirdNET_1000_RAW_model.h5'
 KERAS_MODEL_CONFIG = 'model/BirdNET_1000_RAW_config.json'
 
 COREML_MODEL_FILE = 'model/BirdNET_1000_RAW.mlmodel'
@@ -47,7 +47,7 @@ def keras2coreml(keras_model_path, cml_model_path, config_path, layer_index=-1):
     # Load keras model
     keras_model, labels = loadKerasModel(keras_model_path, config_path, layer_index)
 
-    # Export as protobuf model (it seems like CoreML requires this in order to also convert custom layers
+    # Export as protobuf model (it seems like CoreML requires this in order to also convert custom layers)
     print('SAVING AS TF MODEL DIR...')
     k.models.save_model(
         keras_model,
@@ -80,6 +80,8 @@ def keras2coreml(keras_model_path, cml_model_path, config_path, layer_index=-1):
 
     cml_model.author = 'Stefan Kahl'
     cml_model.short_description = 'Bird sound recognition with BirdNET.'
+
+    # We could probably use the labels
             
     cml_model.save(cml_model_path)
 
