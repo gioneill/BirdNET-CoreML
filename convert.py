@@ -36,6 +36,7 @@ def loadKerasModel(h5file, config_file, layer_index=-1):
 
     return net, labels
 
+# There seems to be no documented way of how to convert custom TF layers with tfcoreml
 def kerasToCoreMLSimpleSpecLayer(kerasLayer):                                                                       
     coreml_layer = coremltools.proto.NeuralNetwork_pb2.CustomLayerParams()
     coreml_layer.className = 'SimpleSpecLayer'
