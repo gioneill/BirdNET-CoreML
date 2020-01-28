@@ -36,12 +36,6 @@ def loadKerasModel(h5file, config_file, layer_index=-1):
 
     return net, labels
 
-# There seems to be no documented way of how to convert custom TF layers with tfcoreml
-def kerasToCoreMLSimpleSpecLayer(kerasLayer):                                                                       
-    coreml_layer = coremltools.proto.NeuralNetwork_pb2.CustomLayerParams()
-    coreml_layer.className = 'SimpleSpecLayer'
-    return coreml_layer
-
 def keras2coreml(keras_model_path, cml_model_path, config_path, layer_index=-1):
 
     # Load keras model
@@ -68,18 +62,15 @@ def keras2coreml(keras_model_path, cml_model_path, config_path, layer_index=-1):
 
     # Convert this model to Core ML format
     cml_model = tfcoreml.convert(
-                            tf_model_path=keras_model_path.rsplit('.', 1)[0] + '/saved_model.pb',
-                            input_name_shape_dict={input_name: (144000)}, # Sample rate * signal length = 48000 * 3 = 144000
+                            tf_model_path=keras_model_path.rsplit('.', 1)[0],
+                            input_name_shape_dict={input_name: (1, 144000)}, # Sample rate * signal length = 48000 * 3 = 144000
                             output_feature_names=[graph_output_node_name],
                             minimum_ios_deployment_target='13',
-                            add_custom_layers=True, 
-                            custom_conversion_functions={'SimpleSpecLayer': kerasToCoreMLSimpleSpecLayer}
+                            add_custom_layers=True
                             )
 
     cml_model.author = 'Stefan Kahl'
     cml_model.short_description = 'Bird sound recognition with BirdNET.'
-
-    # We could probably use the labels
             
     cml_model.save(cml_model_path)
 
