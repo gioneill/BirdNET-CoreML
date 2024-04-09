@@ -2,6 +2,7 @@ import tensorflow as tf
 from tensorflow import keras as k
 from tensorflow.keras import layers as l
 
+@tf.keras.utils.register_keras_serializable()
 class SimpleSpecLayer(l.Layer):
 
     def __init__(self, sample_rate=48000, spec_shape=(257, 384), frame_step=374, frame_length=512, data_format='channels_last', **kwargs):

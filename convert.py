@@ -6,6 +6,7 @@ import numpy as np
 
 import tensorflow as tf
 from tensorflow import keras as k
+from keras import saving
 
 import tfcoreml
 
@@ -20,10 +21,13 @@ def loadKerasModel(h5file, config_file, layer_index=-1):
     
     print('LOADING MODEL FROM CHECKPOINT', h5file.split(os.sep)[-1], '...')
 
+    # Pass the custom objects dictionary to a custom object scope and place
+    # the `keras.models.load_model()` call within the scope.
+    custom_objects = {'SimpleSpecLayer': custom_layers.SimpleSpecLayer}
+
     # Load trained net
-    net = k.models.load_model(h5file,
-                              custom_objects={'SimpleSpecLayer': custom_layers.SimpleSpecLayer},
-                              compile=False)
+    with saving.custom_object_scope(custom_objects):
+        net = k.models.load_model(h5file)
 
     # Select specific output layer
     if not layer_index == -1:

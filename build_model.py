@@ -181,7 +181,8 @@ def buildModel():
 
     # Input layer
     print('  INPUT:')
-    inputs = k.Input(shape=int(SAMPLE_RATE * SPEC_LENGTH), name='INPUT')
+    # inputs = k.Input(shape=int(SAMPLE_RATE * SPEC_LENGTH), name='INPUT')
+    inputs = k.Input(shape=(int(SAMPLE_RATE * SPEC_LENGTH),), name='INPUT')
 
     # Spectrogram layer if input is raw signal
     net = custom_layers.SimpleSpecLayer(sample_rate=SAMPLE_RATE,
