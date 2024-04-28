@@ -27,7 +27,7 @@ def loadKerasModel(h5file, config_file, layer_index=-1):
 
     # Load trained net
     with saving.custom_object_scope(custom_objects):
-        net = k.models.load_model(h5file)
+        net = k.models.load_model(h5file, compile=False)
 
     # Select specific output layer
     if not layer_index == -1:
