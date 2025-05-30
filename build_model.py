@@ -6,6 +6,7 @@ os.environ['TF_DETERMINISTIC_OPS'] = '1'
 import tensorflow as tf
 from tensorflow import keras as k
 from tensorflow.keras import layers as l
+import json
 
 import custom_layers
 
@@ -20,7 +21,7 @@ RESNET_N = 3
 ACTIVATION = 'relu'
 INITIALIZER = 'he'
 DROPOUT_RATE = 0.33
-NUM_CLASSES = 1000
+NUM_CLASSES = 6000
 
 # Input config
 SAMPLE_RATE = 48000
@@ -261,13 +262,26 @@ def buildModel():
     return model
 
 def saveModel(model, name):
-
     print('SAVING MODEL...', end='')
-    model.save(os.path.join('model', name)) 
+    
+    # Save the model using the .keras format
+    model.save(os.path.join('model', name.replace('.h5', '.keras'))) 
+    
+    # Save the model configuration
+    config = {
+        'CLASSES': [f'Class_{i}' for i in range(NUM_CLASSES)],  # Replace with actual class names
+        'MODEL_VERSION': '6000_RAW',
+        'SAMPLE_RATE': SAMPLE_RATE,
+        'SPEC_LENGTH': SPEC_LENGTH
+    }
+    
+    config_path = os.path.join('model', name.replace('RAW_model.h5', '') + 'model_config.json')
+    with open(config_path, 'w') as f:
+        json.dump(config, f)
+    
     print('DONE!')
 
 if __name__ == '__main__':
 
     model = buildModel()
-    saveModel(model, 'BirdNET_1000_RAW_model.h5')
-
+    saveModel(model, 'BirdNET_6000_RAW_model.h5')
