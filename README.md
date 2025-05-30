@@ -8,7 +8,7 @@ Convert trained BirdNET Keras models into Apple Core ML packages for on-device i
 
 1. **Build** a BirdNET spectrogram+ResNet model in Keras.  
 2. **Export** it as a single-signature TensorFlow SavedModel.  
-3. **Convert** that SavedModel into an Apple Core ML Program package (`.mlpackage`) or legacy `.mlmodel`.
+3. **Convert** that SavedModel into an Apple Core ML Program package (`.mlpackage`).
 
 ---
 
