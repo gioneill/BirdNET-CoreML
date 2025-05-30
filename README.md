@@ -1,12 +1,12 @@
 # BirdNET-CoreML
 
-Convert trained BirdNET Keras models into Apple Core ML packages for on-device inference.
+Convert a trained BirdNET Keras model into an Apple Core ML Program package (`.mlpackage`) for on-device inference on iOS 15+.
 
 ---
 
 ## Overview
 
-1. **Build** a BirdNET spectrogram+ResNet model in Keras.  
+1. **Build** a BirdNET spectrogram + ResNet model in Keras.  
 2. **Export** it as a single-signature TensorFlow SavedModel.  
 3. **Convert** that SavedModel into an Apple Core ML Program package (`.mlpackage`).
 
@@ -14,46 +14,121 @@ Convert trained BirdNET Keras models into Apple Core ML packages for on-device i
 
 ## Requirements
 
-- **macOS** (Core ML uses Apple’s frameworks)  
-- **Python ≥ 3.10**  
-- **Homebrew** (optional, for installing Python 3.10/3.11)  
+- **macOS** (Core ML uses Apple frameworks)  
+- **Python 3.11**  
 - **Git**  
 
 ---
 
-## Getting the BirdNET checkpoints
+## Setup
 
-This converter expects to find the raw Keras checkpoint and its JSON config
-in `model/` under the CoreML project. You can grab them from the
-[BirdNET-Analyzer](https://github.com/kahst/BirdNET-Analyzer) repo:
+1. **Clone this repo** (and the BirdNET checkpoints):
+
+   ```bash
+   git clone https://github.com/kahst/BirdNET-Analyzer.git
+   git clone <your-repo-URL> BirdNET-CoreML
+   ```
+
+2. **Create & activate your Python 3.11 virtual environment**:
+
+   ```bash
+   python3.11 -m venv birdnet311
+   source birdnet311/bin/activate # macOS/Linux
+   ```
+
+3. **Install dependencies**:
+
+   ```bash
+   # If requirements.txt already exists:
+   pip install --upgrade pip
+   pip install -r requirements.txt
+   ```
+   ```bash
+   # If you just installed packages manually and haven’t generated requirements.txt yet:
+   pip freeze > requirements.txt
+   ```
+
+4. **Verify your stack**:
+
+   ```bash
+   python - <<'PY'
+   import tensorflow as tf, coremltools as ct
+   print("TensorFlow:", tf.__version__)
+   print("coremltools:", ct.__version__)
+   PY
+   ```
+
+5. **Proceed to build and convert**:
+
+   ```bash
+   python build_model.py
+   python convert.py
+   ```
+
+---
+
+## Getting the BirdNET Checkpoints
+
+Copy the 6000-class RAW files into model/:
 
 ```bash
-# From your project root:
-git clone https://github.com/kahst/BirdNET-Analyzer.git
-
-# Copy the 6K-class RAW files into this repo's model/ folder
 mkdir -p BirdNET-CoreML/model
-cp BirdNET-Analyzer/checkpoints/BirdNET_6000_RAW_model.h5       \
+cp BirdNET-Analyzer/checkpoints/BirdNET_6000_RAW_model.h5 \
    BirdNET-CoreML/model/BirdNET_6000_RAW_model.keras
-cp BirdNET-Analyzer/checkpoints/BirdNET_6000_RAW_config.json    \
+cp BirdNET-Analyzer/checkpoints/BirdNET_6000_RAW_config.json \
    BirdNET-CoreML/model/BirdNET_6000_RAW_model_config.json
 ```
 
-## Setup
+---
 
-### Stable (coremltools 6.x on Python 3.10)
+## Building the Keras Model
+
+Edit hyperparameters in build_model.py if needed (e.g. NUM_CLASSES = 6000), then run:
 
 ```bash
-# 1. Create & activate a 3.10 virtual env
-python3.10 -m venv birdnet310
-source birdnet310/bin/activate
+cd BirdNET-CoreML
+python build_model.py
+# → writes model/BirdNET_6000_RAW_model.keras
+```
 
-# 2. Install TensorFlow (includes Keras-2)
-pip install --upgrade pip
-pip install tensorflow-macos==2.13.1 tensorflow-metal==1.0.1
+---
 
-# 3. Install Core ML Tools 6.x
-pip install coremltools<7
+## Converting to Core ML
 
-# 4. Freeze deps for reproducibility
-pip freeze > requirements.txt
+For iOS 15+ (ML Program format):
+
+```bash
+cd BirdNET-CoreML
+python convert.py
+# → produces model/BirdNET_6000_RAW.mlpackage/
+```
+
+If you later need the legacy .mlmodel (NeuralNetwork) for older iOS versions, edit convert.py:
+
+```
+- convert_to="mlprogram"
+- minimum_deployment_target=ct.target.iOS15
++ convert_to="neuralnetwork"
++ minimum_deployment_target=ct.target.iOS13
+```
+
+and re-run python convert.py.
+
+---
+
+Project Layout
+
+project-root/
+├─ BirdNET-Analyzer/                # upstream repo with checkpoints
+│  └─ checkpoints/
+│     ├─ BirdNET_6000_RAW_model.h5
+│     └─ BirdNET_6000_RAW_config.json
+└─ BirdNET-CoreML/                  # this repo
+   ├─ model/
+   │  ├─ BirdNET_6000_RAW_model.keras
+   │  └─ BirdNET_6000_RAW_model_config.json
+   ├─ custom_layers.py
+   ├─ build_model.py
+   ├─ convert.py
+   ├─ requirements.txt
+   └─ README.md
