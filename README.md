@@ -21,6 +21,24 @@ Convert trained BirdNET Keras models into Apple Core ML packages for on-device i
 
 ---
 
+## Getting the BirdNET checkpoints
+
+This converter expects to find the raw Keras checkpoint and its JSON config
+in `model/` under the CoreML project. You can grab them from the
+[BirdNET-Analyzer](https://github.com/kahst/BirdNET-Analyzer) repo:
+
+```bash
+# From your project root:
+git clone https://github.com/kahst/BirdNET-Analyzer.git
+
+# Copy the 6K-class RAW files into this repo's model/ folder
+mkdir -p BirdNET-CoreML/model
+cp BirdNET-Analyzer/checkpoints/BirdNET_6000_RAW_model.h5       \
+   BirdNET-CoreML/model/BirdNET_6000_RAW_model.keras
+cp BirdNET-Analyzer/checkpoints/BirdNET_6000_RAW_config.json    \
+   BirdNET-CoreML/model/BirdNET_6000_RAW_model_config.json
+```
+
 ## Setup
 
 ### Stable (coremltools 6.x on Python 3.10)
