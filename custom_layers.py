@@ -26,20 +26,21 @@ class SimpleSpecLayer(l.Layer):
 
     def call(self, inputs):
 
-        # Perform STFT    
-        spec = tf.signal.stft(inputs,
-                              self.frame_length,
-                              self.frame_step,
-                              fft_length=self.frame_length,
-                              window_fn=tf.signal.hann_window,
-                              pad_end=False,
-                              name='stft')    
+        # Perform STFT (complex64)
+        complex_spec = tf.signal.stft(
+            inputs,
+            self.frame_length,
+            self.frame_step,
+            fft_length=self.frame_length,
+            window_fn=tf.signal.hann_window,
+            pad_end=False,
+            name="stft"
+        )
 
-        # Cast from complex to float
-        spec = tf.dtypes.cast(spec, tf.float32)
-        
-        # Convert to power spectrogram
-        spec = tf.math.pow(spec, 2.0)        
+        # Compute power spectrum = real^2 + imag^2
+        real = tf.math.real(complex_spec)
+        imag = tf.math.imag(complex_spec)
+        spec = real * real + imag * imag   # float32       
 
         # Convert magnitudes using nonlinearity
         spec = tf.math.pow(spec, 1.0 / (1.0 + tf.math.exp(self.mag_scale)))

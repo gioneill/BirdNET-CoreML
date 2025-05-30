@@ -1,79 +1,96 @@
-import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2' 
+#!/usr/bin/env python3
+"""
+convert.py – BirdNET Keras→Core ML via a single-signature SavedModel
+• coremltools 8.3
+• TensorFlow-macOS 2.19.0 (tf.keras 3.10.0)
+"""
 
-import json
-import numpy as np
+import os
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 import tensorflow as tf
 from tensorflow import keras as k
-
-import tfcoreml
-
+import coremltools as ct
+from pathlib import Path
 import custom_layers
 
-KERAS_MODEL_FILE = 'model/BirdNET_1000_RAW_model.h5'
-KERAS_MODEL_CONFIG = 'model/BirdNET_1000_RAW_config.json'
+# ──────────────────────────────────────────────────────────────────────────────
+#  Shim for old Activation config                                             #
+# ──────────────────────────────────────────────────────────────────────────────
+class FixedSigmoid(tf.keras.layers.Activation):
+    """Fallback for legacy Activation layers saved without an 'activation' key."""
+    def __init__(self, activation="sigmoid", **kwargs):
+        super().__init__(activation, **kwargs)
 
-COREML_MODEL_FILE = 'model/BirdNET_1000_RAW.mlmodel'
+CUSTOM_OBJECTS = {
+    "SimpleSpecLayer": custom_layers.SimpleSpecLayer,
+    "Sigmoid":          FixedSigmoid,
+    "Activation":       FixedSigmoid,
+}
 
-def loadKerasModel(h5file, config_file, layer_index=-1):
-    
-    print('LOADING MODEL FROM CHECKPOINT', h5file.split(os.sep)[-1], '...')
+# ──────────────────────────────────────────────────────────────────────────────
+#  Paths                                                                      #
+# ──────────────────────────────────────────────────────────────────────────────
+KERAS_FILE    = Path("model/BirdNET_6000_RAW_model.keras")
+SAVEDMODEL_DIR = Path("model/BirdNET_6000_RAW_savedmodel")
+COREML_FILE   = Path("model/BirdNET_6000_RAW.mlpackage")
 
-    # Load trained net
-    net = k.models.load_model(h5file,
-                              custom_objects={'SimpleSpecLayer': custom_layers.SimpleSpecLayer},
-                              compile=False)
+# ──────────────────────────────────────────────────────────────────────────────
+#  Conversion                                                                 #
+# ──────────────────────────────────────────────────────────────────────────────
+def keras2coreml():
+    if not KERAS_FILE.exists():
+        raise FileNotFoundError(f"{KERAS_FILE} not found – run your build step first.")
 
-    # Select specific output layer
-    if not layer_index == -1:
-        net = k.Model(net.inputs, net.layers[layer_index].output)
-
-    # Get class labels from config
-    with open(config_file, 'r') as cfile:
-        config = json.load(cfile)
-        labels = config['CLASSES']
-
-    return net, labels
-
-def keras2coreml(keras_model_path, cml_model_path, config_path, layer_index=-1):
-
-    # Load keras model
-    keras_model, labels = loadKerasModel(keras_model_path, config_path, layer_index)
-
-    # Export as protobuf model (it seems like CoreML requires this in order to also convert custom layers)
-    print('SAVING AS TF MODEL DIR...')
-    k.models.save_model(
-        keras_model,
-        keras_model_path.rsplit('.', 1)[0],
-        overwrite=True,
-        include_optimizer=False,
-        save_format='tf',
-        signatures=None,
-        options=None
+    print("1/3: Loading Keras model…")
+    model = k.models.load_model(
+        KERAS_FILE,
+        compile=False,
+        custom_objects=CUSTOM_OBJECTS,
     )
 
-    # Get input, output node names for the TF graph from the Keras model
-    print('CONVERTING TO COREML...')
-    input_name = keras_model.inputs[0].name.split(':')[0]
-    keras_output_node_name = keras_model.outputs[0].name.split(':')[0]
-    graph_output_node_name = keras_output_node_name.split('/')[-1]
-    print(input_name, graph_output_node_name)
+    # Build a single-signature tf.function
+    print("2/3: Exporting a single-signature SavedModel…")
+    input_name = model.inputs[0].name.split(":")[0]  # typically "INPUT"
+    spec = tf.TensorSpec(shape=(1, 144000), dtype=tf.float32, name=input_name)
 
-    # Convert this model to Core ML format
-    cml_model = tfcoreml.convert(
-                            tf_model_path=keras_model_path.rsplit('.', 1)[0],
-                            input_name_shape_dict={input_name: (1, 144000)}, # Sample rate * signal length = 48000 * 3 = 144000
-                            output_feature_names=[graph_output_node_name],
-                            minimum_ios_deployment_target='13',
-                            add_custom_layers=True
-                            )
+    @tf.function(input_signature=[spec])
+    def serve(x):
+        return model(x, training=False)
 
-    cml_model.author = 'Stefan Kahl'
-    cml_model.short_description = 'Bird sound recognition with BirdNET.'
-            
-    cml_model.save(cml_model_path)
+    # Overwrite any old directory
+    if SAVEDMODEL_DIR.exists():
+        import shutil
+        shutil.rmtree(SAVEDMODEL_DIR)
 
-if __name__ == '__main__':
+    tf.saved_model.save(
+        model,
+        SAVEDMODEL_DIR,
+        signatures={"serving_default": serve.get_concrete_function()}
+    )
 
-    keras2coreml(KERAS_MODEL_FILE, COREML_MODEL_FILE, KERAS_MODEL_CONFIG)
+    # Discover the real placeholder
+    imported     = tf.saved_model.load(str(SAVEDMODEL_DIR))
+    signature    = imported.signatures["serving_default"]
+    real_input_name = signature.inputs[0].name.split(":")[0]
+    print("3/3: Converting to Core ML…")
+    print("   using input placeholder:", real_input_name)
+
+    audio_input = ct.TensorType(name=real_input_name, shape=(1, 144000))
+
+    mlmodel = ct.convert(
+        str(SAVEDMODEL_DIR),
+        source="tensorflow",
+        convert_to="mlprogram",           
+        inputs=[audio_input],             
+        minimum_deployment_target=ct.target.iOS15,
+        compute_units=ct.ComputeUnit.ALL,
+    )
+
+    mlmodel.author            = "Stefan Kahl"
+    mlmodel.short_description = "Bird sound recognition with BirdNET."
+    mlmodel.save(COREML_FILE)
+    print("✓ Saved Core ML model to", COREML_FILE)
+
+if __name__ == "__main__":
+    keras2coreml()
