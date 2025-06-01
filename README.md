@@ -2,6 +2,8 @@
 
 Convert a trained BirdNET Keras model into an Apple Core ML Program package (`.mlpackage`) for on-device inference on iOS 15+.
 
+Note: This was forked from a repo that is no longer available (https://github.com/kahst/BirdNET-CoreML), and additionally, has not yet been tested to actually work. I will update this when I have a chance to test it...
+
 ---
 
 ## Overview
