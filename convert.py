@@ -78,11 +78,25 @@ def keras2coreml():
 
     audio_input = ct.TensorType(name=real_input_name, shape=(1, 144000))
 
+    # ──────────────────────────────────────────────────────────────────────────────
+    #  Load class labels and configure classifier
+    # ──────────────────────────────────────────────────────────────────────────────
+    labels_path = Path("../BirdNET-Analyzer/birdnet_analyzer/labels/V2.4/BirdNET_GLOBAL_6K_V2.4_Labels_en_uk.txt")
+    with open(labels_path, "r", encoding="utf-8") as f:
+        labels = [line.strip() for line in f.readlines()]
+
+    config = ct.ClassifierConfig(
+        class_labels=labels,
+        predicted_feature_name="classLabel",
+        predicted_probabilities_output="classLabelProbs"
+    )
+
     mlmodel = ct.convert(
         str(SAVEDMODEL_DIR),
         source="tensorflow",
         convert_to="mlprogram",           
-        inputs=[audio_input],             
+        inputs=[audio_input],
+        classifier_config=config,             
         minimum_deployment_target=ct.target.iOS15,
         compute_units=ct.ComputeUnit.ALL,
     )
