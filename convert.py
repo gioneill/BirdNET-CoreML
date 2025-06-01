@@ -87,8 +87,8 @@ def keras2coreml():
 
     config = ct.ClassifierConfig(
         class_labels=labels,
-        predicted_feature_name="classLabel",
-        predicted_probabilities_output="classLabelProbs"
+        predicted_feature_name="classLabel"
+        # predicted_probabilities_output="classLabelProbs"
     )
 
     mlmodel = ct.convert(
