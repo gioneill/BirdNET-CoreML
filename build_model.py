@@ -21,7 +21,7 @@ RESNET_N = 3
 ACTIVATION = 'relu'
 INITIALIZER = 'he'
 DROPOUT_RATE = 0.33
-NUM_CLASSES = 6000
+NUM_CLASSES = 6522
 
 # Input config
 SAMPLE_RATE = 48000
@@ -182,7 +182,7 @@ def buildModel():
 
     # Input layer
     print('  INPUT:')
-    inputs = k.Input(shape=int(SAMPLE_RATE * SPEC_LENGTH), name='INPUT')
+    inputs = k.Input(shape=(int(SAMPLE_RATE * SPEC_LENGTH),), name='INPUT')
 
     # Spectrogram layer if input is raw signal
     net = custom_layers.SimpleSpecLayer(sample_rate=SAMPLE_RATE,
