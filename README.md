@@ -93,6 +93,7 @@ python convert.py
 
 Project Layout
 
+```
 project-root/
 ├─ BirdNET-Analyzer/                # upstream repo with checkpoints
 │  └─ checkpoints/
@@ -107,3 +108,4 @@ project-root/
    ├─ convert.py
    ├─ requirements.txt
    └─ README.md
+```
