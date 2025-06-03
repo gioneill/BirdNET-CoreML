@@ -96,7 +96,7 @@ def keras2coreml():
         source="tensorflow",
         convert_to="mlprogram",           
         inputs=[audio_input],
-        classifier_config=config,             
+        # classifier_config=config,             
         minimum_deployment_target=ct.target.iOS15,
         compute_units=ct.ComputeUnit.ALL,
     )

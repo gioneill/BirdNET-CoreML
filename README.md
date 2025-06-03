@@ -28,7 +28,7 @@ Note: This was forked from a repo that is no longer available (https://github.co
 
    ```bash
    git clone https://github.com/kahst/BirdNET-Analyzer.git
-   git clone <your-repo-URL> BirdNET-CoreML
+   git clone https://github.com/gioneill/BirdNET-CoreML.git
    ```
 
 2. **Create & activate your Python 3.11 virtual environment**:
@@ -59,33 +59,17 @@ Note: This was forked from a repo that is no longer available (https://github.co
    print("coremltools:", ct.__version__)
    PY
    ```
-
-5. **Proceed to build and convert**:
-
-   ```bash
-   python build_model.py
-   python convert.py
+   should return:
    ```
-
----
-
-## Getting the BirdNET Checkpoints
-
-Copy the 6000-class RAW files into model/:
-
-```bash
-mkdir -p BirdNET-CoreML/model
-cp BirdNET-Analyzer/checkpoints/BirdNET_6000_RAW_model.h5 \
-   BirdNET-CoreML/model/BirdNET_6000_RAW_model.keras
-cp BirdNET-Analyzer/checkpoints/BirdNET_6000_RAW_config.json \
-   BirdNET-CoreML/model/BirdNET_6000_RAW_model_config.json
-```
+   TensorFlow: 2.19.0
+   coremltools: 8.3.0
+   ```
 
 ---
 
 ## Building the Keras Model
 
-Edit hyperparameters in build_model.py if needed (e.g. NUM_CLASSES = 6000), then run:
+Edit hyperparameters in build_model.py if needed (e.g. NUM_CLASSES = 6522), then run:
 
 ```bash
 cd BirdNET-CoreML
@@ -104,17 +88,6 @@ cd BirdNET-CoreML
 python convert.py
 # → produces model/BirdNET_6000_RAW.mlpackage/
 ```
-
-If you later need the legacy .mlmodel (NeuralNetwork) for older iOS versions, edit convert.py:
-
-```
-- convert_to="mlprogram"
-- minimum_deployment_target=ct.target.iOS15
-+ convert_to="neuralnetwork"
-+ minimum_deployment_target=ct.target.iOS13
-```
-
-and re-run python convert.py.
 
 ---
 
