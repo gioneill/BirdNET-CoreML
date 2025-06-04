@@ -352,6 +352,71 @@ do {
         print("0.5-0.9 | \\(count05to09)")
         print("0.9-1.0 | \\(count09to1)")
     }
+
+    // --- MODIFIED: Inspect all MultiArray outputs and then process logits ---
+    print("\\n\\n--- All Available MLMultiArray Outputs ---")
+    var identifiedLogitOutputName: String? = nil
+    
+    // Based on user-provided output: "Identity" and "Identity_1" are the MLMultiArray outputs.
+    // We will assume "Identity_1" is the pre-sigmoid logits.
+    // The other, "Identity", is likely used for classLabel_probs by Core ML.
+    
+    let allOutputNames = output.featureNames // Corrected: output itself is the MLFeatureProvider
+    for name in allOutputNames {
+        if let multiArray = output.featureValue(for: name)?.multiArrayValue {
+            print("- Found MLMultiArray output: \(name), Shape: \(multiArray.shape), Count: \(multiArray.count), DataType: \(multiArray.dataType.rawValue)")
+            if name == "Identity_1" { // Tentative assumption for logits
+                identifiedLogitOutputName = name
+            } else if name == "Identity" {
+                 // This is likely the sigmoid output, used for classLabel_probs
+                 print("  (This output '\(name)' is likely the source for 'classLabel_probs')")
+            }
+        } else if let stringValue = output.featureValue(for: name)?.stringValue {
+            print("- Found String output: \(name) = \(stringValue)")
+        } else if let dictionaryValue = output.featureValue(for: name)?.dictionaryValue {
+            print("- Found Dictionary output: \(name) (contains \(dictionaryValue.count) items)")
+        } else {
+            print("- Found output of other type: \(name)")
+        }
+    }
+
+    if let logitName = identifiedLogitOutputName, let preSigmoidLogitsOutput = output.featureValue(for: logitName)?.multiArrayValue {
+        print("\\n--- Pre-Sigmoid Logits Statistics (from output: \(logitName)) ---")
+        var logits: [Float] = []
+        // Ensure the dataType is float32 as expected, otherwise this might crash or give bad data
+        if preSigmoidLogitsOutput.dataType == .float32 {
+            let count = preSigmoidLogitsOutput.count
+            for i in 0..<count {
+                logits.append(preSigmoidLogitsOutput[i].floatValue)
+            }
+
+            if let maxLogit = logits.max() {
+                print(String(format: "Max Logit: %.6f", maxLogit))
+            } else {
+                print("Max Logit: N/A (array was empty or contained non-comparable values)")
+            }
+            
+            if logits.isEmpty {
+                print("Mean Logit: N/A (array is empty)")
+            } else {
+                let sumLogits = logits.reduce(0, +)
+                let meanLogit = sumLogits / Float(logits.count)
+                print(String(format: "Mean Logit: %.6f", meanLogit))
+            }
+            print("Number of logit values processed: \\(logits.count) from MLMultiArray with total count: \(preSigmoidLogitsOutput.count)")
+        } else {
+            print("Error: Expected MLMultiArray for logits ('\(logitName)') to be Float32, but found \(preSigmoidLogitsOutput.dataType.rawValue). Cannot process logits.")
+        }
+    } else {
+        print("\\n--- Pre-Sigmoid Logits Statistics ---")
+        if identifiedLogitOutputName != nil {
+             print("Could not retrieve MLMultiArray for presumed logit output: '\(identifiedLogitOutputName!)'. It might not be an MLMultiArray or was not found.")
+        } else {
+            print("Could not identify 'Identity_1' as a candidate for pre_sigmoid_logits output among the model outputs.")
+            print("Please check the 'All Available MLMultiArray Outputs' list above and verify output names.")
+        }
+    }
+    // --- END MODIFIED ---
     
 } catch {
     print("Error: \\(error)")
@@ -457,7 +522,7 @@ def process_segment(segment, compiled_model_path, sample_rate, segment_index):
 
 def main():
     parser = argparse.ArgumentParser(description='Test BirdNET CoreML model using Swift')
-    parser.add_argument('--model', default='/Users/grego/Developer/BirdNET/coreml_models/BirdNET_6000_RAW_WITHLABELS.mlpackage',
+    parser.add_argument('--model', default='/Users/grego/Developer/BirdNET/BirdNET-CoreML/model/BirdNET_6000_RAW_with_logits.mlpackage',
                         help='Path to the CoreML model (either .mlpackage or .mlmodel)')
     parser.add_argument('--audio', default='/Users/grego/Developer/BirdNET/verification/soundscape.wav',
                         help='Path to the audio file')
