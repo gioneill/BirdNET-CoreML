@@ -42,8 +42,8 @@ class SimpleSpecLayer(l.Layer):
         imag = tf.math.imag(complex_spec)
         spec = real * real + imag * imag   # float32       
 
-        # Convert magnitudes using nonlinearity
-        spec = tf.math.pow(spec, 1.0 / (1.0 + tf.math.exp(self.mag_scale)))
+        # Log compression (replace root-based nonlinearity)
+        spec = tf.math.log1p(spec)
 
         # Normalize values between 0 and 1 (corrected)
         min_val = k.backend.min(spec, axis=[1, 2], keepdims=True)
