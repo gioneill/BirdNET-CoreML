@@ -42,13 +42,19 @@ class SimpleSpecLayer(l.Layer):
         imag = tf.math.imag(complex_spec)
         spec = real * real + imag * imag   # float32       
 
-        # Log compression (replace root-based nonlinearity)
-        spec = tf.math.log1p(spec)
+        # Fixed mag_scale: square root nonlinearity
+        spec = tf.math.sqrt(spec)
 
         # Normalize values between 0 and 1 (corrected)
         min_val = k.backend.min(spec, axis=[1, 2], keepdims=True)
         max_val = k.backend.max(spec, axis=[1, 2], keepdims=True)
         spec = tf.math.divide(tf.math.subtract(spec, min_val), tf.math.maximum(max_val - min_val, 1e-8))
+
+        # Print stats for debugging (only works in eager mode, but will show up in test_birdnet_simple.py)
+        tf.print("SimpleSpecLayer spectrogram stats: min =", tf.reduce_min(spec), 
+                 "max =", tf.reduce_max(spec), 
+                 "mean =", tf.reduce_mean(spec), 
+                 "std =", tf.math.reduce_std(spec))
         
         # Swap axes to fit input shape
         spec = tf.transpose(spec, [0, 2, 1])
