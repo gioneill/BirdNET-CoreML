@@ -315,61 +315,73 @@ do {
     let output = try model.prediction(from: input)
     print("\\nPrediction successful!")
     
-    // Get the results
-    if let classLabel = output.featureValue(for: "classLabel")?.stringValue {
+    // Get the results: Predicted class label
+    if let classLabel = output.featureValue(for: "sigmoid_output")?.stringValue { // "sigmoid_output" is the name from ClassifierConfig
         print("\\nPredicted class: \\(classLabel)")
     }
-    
-    if let probsDict = output.featureValue(for: "classLabel_probs")?.dictionaryValue as? [String: Double] {
-        print("\\nTop 10 predictions:")
-        
-        // Sort by probability and get top 10
-        let sortedProbs = probsDict.sorted(by: { $0.value > $1.value }).prefix(10)
-        
-        // Print header
-        print("Rank | Species | Confidence")
-        print("-----|---------|----------")
-        
-        // Print each prediction with rank
-        for (index, (label, prob)) in sortedProbs.enumerated() {
-            print("\\(index + 1). | \\(label) | \\(String(format: "%.6f", prob))")
+
+    // Get the results: Probabilities dictionary
+    let probsOutputName = "sigmoid_output_probs" // Name for probability dictionary (often default or set in ClassifierConfig)
+    if let probsFeatureValue = output.featureValue(for: probsOutputName) {
+        print("\\nInspecting output '\(probsOutputName)': Type is \(probsFeatureValue.type.rawValue)") // Raw value of MLFeatureType
+
+        if probsFeatureValue.type == .dictionary {
+            if let probsDict = probsFeatureValue.dictionaryValue as? [String: Double] {
+                print("Successfully cast '\(probsOutputName)' to [String: Double]. Contains \(probsDict.count) items.")
+                print("\\nTop 10 predictions:")
+                
+                let sortedProbs = probsDict.sorted(by: { $0.value > $1.value }).prefix(10)
+                
+                print("Rank | Species | Confidence")
+                print("-----|---------|----------")
+                
+                for (index, (label, prob)) in sortedProbs.enumerated() {
+                    print("\\(index + 1). | \\(label) | \\(String(format: "%.6f", prob))")
+                }
+                
+                print("\\nTotal species with non-zero confidence: \\(probsDict.filter { $0.value > 0 }.count)")
+                
+                let count0to01 = probsDict.filter { $0.value > 0.0 && $0.value <= 0.1 }.count
+                let count01to05 = probsDict.filter { $0.value > 0.1 && $0.value <= 0.5 }.count
+                let count05to09 = probsDict.filter { $0.value > 0.5 && $0.value <= 0.9 }.count
+                let count09to1 = probsDict.filter { $0.value > 0.9 && $0.value <= 1.0 }.count
+                
+                print("\\nConfidence distribution:")
+                print("Range | Count")
+                print("------|------")
+                print("0.0-0.1 | \\(count0to01)")
+                print("0.1-0.5 | \\(count01to05)")
+                print("0.5-0.9 | \\(count05to09)")
+                print("0.9-1.0 | \\(count09to1)")
+            } else {
+                print("Error: '\(probsOutputName)' is a dictionary, but could not cast to [String: Double].")
+            }
+        } else if probsFeatureValue.type == .string {
+            print("Warning: '\(probsOutputName)' is unexpectedly a String. Value: \\(probsFeatureValue.stringValue)")
+        } else {
+            print("Warning: '\(probsOutputName)' is not a Dictionary or String. Actual type: \(probsFeatureValue.type.rawValue)")
         }
-        
-        // Print total number of species detected
-        print("\\nTotal species with non-zero confidence: \\(probsDict.filter { $0.value > 0 }.count)")
-        
-        // Print confidence distribution
-        let count0to01 = probsDict.filter { $0.value > 0.0 && $0.value <= 0.1 }.count
-        let count01to05 = probsDict.filter { $0.value > 0.1 && $0.value <= 0.5 }.count
-        let count05to09 = probsDict.filter { $0.value > 0.5 && $0.value <= 0.9 }.count
-        let count09to1 = probsDict.filter { $0.value > 0.9 && $0.value <= 1.0 }.count
-        
-        print("\\nConfidence distribution:")
-        print("Range | Count")
-        print("------|------")
-        print("0.0-0.1 | \\(count0to01)")
-        print("0.1-0.5 | \\(count01to05)")
-        print("0.5-0.9 | \\(count05to09)")
-        print("0.9-1.0 | \\(count09to1)")
+    } else {
+        print("\\nError: Output '\(probsOutputName)' not found.")
     }
 
     // --- MODIFIED: Inspect all MultiArray outputs and then process logits ---
     print("\\n\\n--- All Available MLMultiArray Outputs ---")
     var identifiedLogitOutputName: String? = nil
     
-    // Based on user-provided output: "Identity" and "Identity_1" are the MLMultiArray outputs.
-    // We will assume "Identity_1" is the pre-sigmoid logits.
-    // The other, "Identity", is likely used for classLabel_probs by Core ML.
-    
     let allOutputNames = output.featureNames // Corrected: output itself is the MLFeatureProvider
     for name in allOutputNames {
-        if let multiArray = output.featureValue(for: name)?.multiArrayValue {
-            print("- Found MLMultiArray output: \(name), Shape: \(multiArray.shape), Count: \(multiArray.count), DataType: \(multiArray.dataType.rawValue)")
-            if name == "Identity_1" { // Tentative assumption for logits
+        if let multiArrayOutput = output.featureValue(for: name)?.multiArrayValue {
+            print("- Found MLMultiArray output: \(name), Shape: \(multiArrayOutput.shape), Count: \(multiArrayOutput.count), DataType: \(multiArrayOutput.dataType.rawValue)")
+            // Heuristic: If ClassifierConfig used "sigmoid_output" as predicted_feature_name,
+            // then the *other* MLMultiArray of the same shape is likely our "pre_sigmoid_logits".
+            // In the previous run, "Identity" was the sigmoid_output's raw tensor, and "Identity_1" was the other.
+            if name == "Identity_1" { 
                 identifiedLogitOutputName = name
-            } else if name == "Identity" {
-                 // This is likely the sigmoid output, used for classLabel_probs
-                 print("  (This output '\(name)' is likely the source for 'classLabel_probs')")
+            } else if name == "Identity" { // This was the raw tensor for sigmoid_output
+                 print("  (This output '\(name)' is likely the raw tensor for 'sigmoid_output' used by ClassifierConfig)")
+            } else if name == "pre_sigmoid_logits" { // If coremltools used our Keras name
+                 identifiedLogitOutputName = name
             }
         } else if let stringValue = output.featureValue(for: name)?.stringValue {
             print("- Found String output: \(name) = \(stringValue)")
@@ -383,7 +395,6 @@ do {
     if let logitName = identifiedLogitOutputName, let preSigmoidLogitsOutput = output.featureValue(for: logitName)?.multiArrayValue {
         print("\\n--- Pre-Sigmoid Logits Statistics (from output: \(logitName)) ---")
         var logits: [Float] = []
-        // Ensure the dataType is float32 as expected, otherwise this might crash or give bad data
         if preSigmoidLogitsOutput.dataType == .float32 {
             let count = preSigmoidLogitsOutput.count
             for i in 0..<count {
@@ -412,7 +423,7 @@ do {
         if identifiedLogitOutputName != nil {
              print("Could not retrieve MLMultiArray for presumed logit output: '\(identifiedLogitOutputName!)'. It might not be an MLMultiArray or was not found.")
         } else {
-            print("Could not identify 'Identity_1' as a candidate for pre_sigmoid_logits output among the model outputs.")
+            print("Could not identify a candidate for pre_sigmoid_logits output. Searched for 'Identity_1' or 'pre_sigmoid_logits'.")
             print("Please check the 'All Available MLMultiArray Outputs' list above and verify output names.")
         }
     }
@@ -487,12 +498,19 @@ def process_segment(segment, compiled_model_path, sample_rate, segment_index):
                                                    output=''.join(stdout_lines), stderr=stderr)
             
             # Extract species probabilities from the output
+            # This part needs to be robust to the actual name of the probability dictionary
             output_lines = stdout_lines
             
+            # Try to find the probability dictionary by common names
+            prob_dict_key = "sigmoid_output_probs" # Default from our ClassifierConfig
+            # Check if "classLabel_probs" is present if the default isn't found (fallback)
+            # This part is tricky as the Swift code itself now handles the parsing.
+            # The Python script here just collects what the Swift script prints.
+
             # Find where the top predictions start
             start_idx = -1
             for i, line in enumerate(output_lines):
-                if "Top 10 predictions:" in line:
+                if "Top 10 predictions:" in line: # This line is printed by the Swift script
                     start_idx = i + 3  # Skip the header and separator lines
                     break
             
@@ -500,14 +518,20 @@ def process_segment(segment, compiled_model_path, sample_rate, segment_index):
             if start_idx > 0:
                 for i in range(start_idx, len(output_lines)):
                     line = output_lines[i].strip()
-                    if not line or "Total species" in line:
-                        break
+                    if not line or "Total species" in line or "Confidence distribution:" in line:
+                        break # Stop if we hit the end of predictions or next section
                     
                     parts = line.split('|')
                     if len(parts) >= 3:
-                        species = parts[1].strip()
-                        prob = float(parts[2].strip())
-                        species_probs[species] = prob
+                        try:
+                            species = parts[1].strip()
+                            prob_str = parts[2].strip()
+                            if species and prob_str: # Ensure they are not empty
+                                prob = float(prob_str)
+                                species_probs[species] = prob
+                        except ValueError:
+                            print(f"Warning: Could not parse probability line: {line}")
+                            continue
             
         except subprocess.CalledProcessError as e:
             print(f"Error running Swift script: {e}")
