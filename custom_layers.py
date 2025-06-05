@@ -45,8 +45,10 @@ class SimpleSpecLayer(l.Layer):
         # Convert magnitudes using nonlinearity
         spec = tf.math.pow(spec, 1.0 / (1.0 + tf.math.exp(self.mag_scale)))
 
-        # Normalize values between 0 and 1
-        spec = tf.math.divide(tf.math.subtract(spec, k.backend.min(spec, axis=[1, 2], keepdims=True)), k.backend.max(spec, axis=[1, 2], keepdims=True))
+        # Normalize values between 0 and 1 (corrected)
+        min_val = k.backend.min(spec, axis=[1, 2], keepdims=True)
+        max_val = k.backend.max(spec, axis=[1, 2], keepdims=True)
+        spec = tf.math.divide(tf.math.subtract(spec, min_val), tf.math.maximum(max_val - min_val, 1e-8))
         
         # Swap axes to fit input shape
         spec = tf.transpose(spec, [0, 2, 1])

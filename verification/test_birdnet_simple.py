@@ -34,6 +34,8 @@ def load_audio(audio_path, target_sr=48000):
         
         # Print audio information
         print(f"Audio loaded: {len(audio)/sr:.2f} seconds, {sr} Hz")
+        # Print waveform statistics for debugging
+        print(f"Audio stats: min={np.min(audio):.6f}, max={np.max(audio):.6f}, mean={np.mean(audio):.6f}, std={np.std(audio):.6f}")
         
         return audio, sr
     except Exception as e:
@@ -212,12 +214,17 @@ func loadAudio(from url: URL) -> [Float]? {
             audioArray[i] = channelData[i]
         }
 
-        // ─── Immediately after "audioArray[i] = channelData[i]" ───
+        // Print detailed stats for debugging
         let maxAmp: Float = audioArray.max() ?? 0
         let minAmp: Float = audioArray.min() ?? 0
         let meanAmp: Float = audioArray.reduce(0, +) / Float(audioArray.count)
-        print(String(format: "→ Audio stats (pre‐norm): min = %.3f, max = %.3f, mean = %.6f",
-                    minAmp, maxAmp, meanAmp))
+        let stdAmp: Float = {
+            let mean = meanAmp
+            let sumSq = audioArray.reduce(0) { $0 + ($1 - mean) * ($1 - mean) }
+            return sqrt(sumSq / Float(audioArray.count))
+        }()
+        print(String(format: "→ Audio stats (pre‐norm): min = %.3f, max = %.3f, mean = %.6f, std = %.6f",
+                    minAmp, maxAmp, meanAmp, stdAmp))
 
         // If those values are >> ±2.0, you must normalize:
         if maxAmp > 2.0 || minAmp < -2.0 {
@@ -229,8 +236,13 @@ func loadAudio(from url: URL) -> [Float]? {
             let newMax = audioArray.max() ?? 0
             let newMin = audioArray.min() ?? 0
             let newMean = audioArray.reduce(0, +) / Float(audioArray.count)
-            print(String(format: "→ Audio stats (post‐norm): min = %.3f, max = %.3f, mean = %.6f",
-                        newMin, newMax, newMean))
+            let newStd: Float = {
+                let mean = newMean
+                let sumSq = audioArray.reduce(0) { $0 + ($1 - mean) * ($1 - mean) }
+                return sqrt(sumSq / Float(audioArray.count))
+            }()
+            print(String(format: "→ Audio stats (post‐norm): min = %.3f, max = %.3f, mean = %.6f, std = %.6f",
+                        newMin, newMax, newMean, newStd))
         }
         
         return audioArray
@@ -428,20 +440,24 @@ do {
                 values.append(rawOutputTensor[i].floatValue)
             }
 
-            if let maxValue = values.max() {
-                print(String(format: "Max Value: %.6f", maxValue))
-            } else {
-                print("Max Value: N/A")
-            }
-            
-            if values.isEmpty {
-                print("Mean Value: N/A")
-            } else {
+            if !values.isEmpty {
+                let maxValue = values.max() ?? 0
+                let minValue = values.min() ?? 0
                 let sumValues = values.reduce(0, +)
                 let meanValue = sumValues / Float(values.count)
+                let stdValue = {
+                    let mean = meanValue
+                    let sumSq = values.reduce(0) { $0 + ($1 - mean) * ($1 - mean) }
+                    return sqrt(sumSq / Float(values.count))
+                }()
+                print(String(format: "Min Value: %.6f", minValue))
+                print(String(format: "Max Value: %.6f", maxValue))
                 print(String(format: "Mean Value: %.6f", meanValue))
+                print(String(format: "Std Value: %.6f", stdValue))
+            } else {
+                print("No values in raw output tensor.")
             }
-            print("Number of values processed: \\(values.count) from MLMultiArray with total count: \(rawOutputTensor.count)")
+            print("Number of values processed: \\(values.count) from MLMultiArray with total count: \\(rawOutputTensor.count)")
             
             // Check range
             let valuesGreaterThanOne = values.filter { $0 > 1.0 }.count
@@ -492,6 +508,8 @@ def process_segment(segment, compiled_model_path, sample_rate, segment_index):
         Dictionary of species and their confidence scores
     """
     print(f"\n--- Processing segment {segment_index+1} ---")
+    # Print segment statistics for debugging
+    print(f"Segment {segment_index+1} stats: min={np.min(segment):.6f}, max={np.max(segment):.6f}, mean={np.mean(segment):.6f}, std={np.std(segment):.6f}")
     
     # Save the segment to a temporary file
     temp_audio_file = f"temp_audio_segment_{segment_index}.wav"
@@ -571,7 +589,7 @@ def main():
     parser = argparse.ArgumentParser(description='Test BirdNET CoreML model using Swift')
     parser.add_argument('--model', default='/Users/grego/Developer/BirdNET/BirdNET-CoreML/model/BirdNET_6000_RAW.mlpackage',
                         help='Path to the CoreML model (either .mlpackage or .mlmodel)')
-    parser.add_argument('--audio', default='/Users/grego/Developer/BirdNET/verification/soundscape.wav',
+    parser.add_argument('--audio', default='verification/crow.wav',
                         help='Path to the audio file')
     parser.add_argument('--segment_duration', type=float, default=3.0,
                         help='Duration of each audio segment (in seconds)')
