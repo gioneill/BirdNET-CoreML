@@ -9,7 +9,10 @@ import os
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 import tensorflow as tf
-from tensorflow import keras as k
+try:
+    from tensorflow import keras as k
+except ImportError:
+    import keras as k
 import coremltools as ct
 from pathlib import Path
 import custom_layers
@@ -88,7 +91,6 @@ def keras2coreml():
     config = ct.ClassifierConfig(
         class_labels=labels,
         predicted_feature_name="classLabel"
-        # predicted_probabilities_output="classLabelProbs"
     )
 
     mlmodel = ct.convert(

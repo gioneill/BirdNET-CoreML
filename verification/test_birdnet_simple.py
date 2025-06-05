@@ -267,7 +267,7 @@ do {
     for (name, desc) in model.modelDescription.outputDescriptionsByName {
         print("- \\(name): \\(desc)")
     }
-    
+
     // Load audio file
     let audioURL = URL(fileURLWithPath: "AUDIO_PATH_PLACEHOLDER")
     guard let audioData = loadAudio(from: audioURL) else {
@@ -314,6 +314,21 @@ do {
     // Run prediction
     let output = try model.prediction(from: input)
     print("\\nPrediction successful!")
+
+    // --- Diagnostic: Print all output feature names and types, and show first dictionary output ---
+    print("\\nDIAGNOSTIC: Output feature names and types:");
+    for name in output.featureNames {
+        let featureValue = output.featureValue(for: name)
+        print("- \\(name): type = \\(featureValue?.type.rawValue ?? -1)")
+        if featureValue?.type == .dictionary {
+            if let dict = featureValue?.dictionaryValue as? [String: Double] {
+                print("  First 5 keys/values for \\(name):")
+                for (k, v) in dict.prefix(5) {
+                    print("    \\(k): \\(v)")
+                }
+            }
+        }
+    }
     
     // Get the results: Predicted class label
     // For single output models without explicit classifier config, CoreML often names the class label output "classLabel"
@@ -337,8 +352,8 @@ do {
 
 
     // Get the results: Probabilities dictionary
-    // For single output models without explicit classifier config, CoreML often names this "classLabelProbs"
-    let probsOutputName = "classLabelProbs" 
+    // For single output models without explicit classifier config, CoreML often names this "classLabel_probs"
+    let probsOutputName = "classLabel_probs" 
     if let probsFeatureValue = output.featureValue(for: probsOutputName) {
         print("\\nInspecting output '\(probsOutputName)': Type is \(probsFeatureValue.type.rawValue)")
 
@@ -618,6 +633,28 @@ def main():
     sorted_species = sorted(all_species.items(), key=lambda x: x[1], reverse=True)
     for i, (species, prob) in enumerate(sorted_species):
         print(f"{i+1}. | {species} | {prob:.6f}")
+
+    # --- Diagnostic: Print all possible output keys and top raw values ---
+    print("\n" + "="*50)
+    print("DIAGNOSTIC: ALL MODEL OUTPUT KEYS AND TOP RAW VALUES")
+    print("="*50)
+    try:
+        # Use the last processed segment's probabilities for diagnostics
+        if 'species_probs' in locals() and species_probs:
+            all_keys = list(species_probs.keys())
+            print(f"Total output keys (species): {len(all_keys)}")
+            print("First 20 output keys (species):")
+            for k in all_keys[:20]:
+                print(f"  - {k}")
+            # Print top 20 by value
+            top_items = sorted(species_probs.items(), key=lambda x: x[1], reverse=True)[:20]
+            print("\nTop 20 output keys by value (for last segment):")
+            for k, v in top_items:
+                print(f"  - {k}: {v:.6f}")
+        else:
+            print("species_probs not available for diagnostics.")
+    except Exception as e:
+        print(f"Error during diagnostic output: {e}")
     
     print("\nDetections by segment:")
     for segment in segment_detections:
