@@ -316,14 +316,31 @@ do {
     print("\\nPrediction successful!")
     
     // Get the results: Predicted class label
-    if let classLabel = output.featureValue(for: "sigmoid_output")?.stringValue { // "sigmoid_output" is the name from ClassifierConfig
-        print("\\nPredicted class: \\(classLabel)")
+    // For single output models without explicit classifier config, CoreML often names the class label output "classLabel"
+    // or it might be the name of the output tensor itself if it's string type.
+    // Let's try "classLabel" first, then the raw output name if that fails.
+    var topClassLabel: String? = output.featureValue(for: "classLabel")?.stringValue
+
+    if topClassLabel == nil {
+        // If "classLabel" isn't found, try to find the first string output (heuristic)
+        for name in output.featureNames {
+            if output.featureValue(for: name)?.type == .string {
+                topClassLabel = output.featureValue(for: name)?.stringValue
+                print("Note: Used '\(name)' as class label output.")
+                break
+            }
+        }
+    }
+    if let label = topClassLabel {
+        print("\\nPredicted class: \\(label)")
     }
 
+
     // Get the results: Probabilities dictionary
-    let probsOutputName = "sigmoid_output_probs" // Name for probability dictionary (often default or set in ClassifierConfig)
+    // For single output models without explicit classifier config, CoreML often names this "classLabelProbs"
+    let probsOutputName = "classLabelProbs" 
     if let probsFeatureValue = output.featureValue(for: probsOutputName) {
-        print("\\nInspecting output '\(probsOutputName)': Type is \(probsFeatureValue.type.rawValue)") // Raw value of MLFeatureType
+        print("\\nInspecting output '\(probsOutputName)': Type is \(probsFeatureValue.type.rawValue)")
 
         if probsFeatureValue.type == .dictionary {
             if let probsDict = probsFeatureValue.dictionaryValue as? [String: Double] {
@@ -357,77 +374,78 @@ do {
                 print("Error: '\(probsOutputName)' is a dictionary, but could not cast to [String: Double].")
             }
         } else if probsFeatureValue.type == .string {
-            print("Warning: '\(probsOutputName)' is unexpectedly a String. Value: \\(probsFeatureValue.stringValue)")
+             print("Warning: '\(probsOutputName)' is unexpectedly a String. Value: \\(probsFeatureValue.stringValue)")
         } else {
             print("Warning: '\(probsOutputName)' is not a Dictionary or String. Actual type: \(probsFeatureValue.type.rawValue)")
         }
     } else {
-        print("\\nError: Output '\(probsOutputName)' not found.")
+        print("\\nOutput '\(probsOutputName)' for probabilities dictionary not found.")
     }
 
-    // --- MODIFIED: Inspect all MultiArray outputs and then process logits ---
-    print("\\n\\n--- All Available MLMultiArray Outputs ---")
-    var identifiedLogitOutputName: String? = nil
+    // --- Inspect all MLMultiArray Outputs (especially the raw Keras sigmoid output) ---
+    print("\\n\\n--- All Available MLMultiArray Outputs (for Old-Working Model) ---")
+    var rawKerasOutputName: String? = nil
     
-    let allOutputNames = output.featureNames // Corrected: output itself is the MLFeatureProvider
+    let allOutputNames = output.featureNames
     for name in allOutputNames {
         if let multiArrayOutput = output.featureValue(for: name)?.multiArrayValue {
             print("- Found MLMultiArray output: \(name), Shape: \(multiArrayOutput.shape), Count: \(multiArrayOutput.count), DataType: \(multiArrayOutput.dataType.rawValue)")
-            // Heuristic: If ClassifierConfig used "sigmoid_output" as predicted_feature_name,
-            // then the *other* MLMultiArray of the same shape is likely our "pre_sigmoid_logits".
-            // In the previous run, "Identity" was the sigmoid_output's raw tensor, and "Identity_1" was the other.
-            if name == "Identity_1" { 
-                identifiedLogitOutputName = name
-            } else if name == "Identity" { // This was the raw tensor for sigmoid_output
-                 print("  (This output '\(name)' is likely the raw tensor for 'sigmoid_output' used by ClassifierConfig)")
-            } else if name == "pre_sigmoid_logits" { // If coremltools used our Keras name
-                 identifiedLogitOutputName = name
+            // For a single output Keras model, this MLMultiArray is likely the direct Keras output
+            // (e.g., from the 'sigmoid' layer), often named 'Identity' or the Keras layer name by CoreML.
+            if multiArrayOutput.shape.count == 2 && multiArrayOutput.shape[0] == 1 && multiArrayOutput.shape[1] == 6522 {
+                 rawKerasOutputName = name // Assume this is it
             }
-        } else if let stringValue = output.featureValue(for: name)?.stringValue {
-            print("- Found String output: \(name) = \(stringValue)")
-        } else if let dictionaryValue = output.featureValue(for: name)?.dictionaryValue {
-            print("- Found Dictionary output: \(name) (contains \(dictionaryValue.count) items)")
+        } else if output.featureValue(for: name)?.type == .string {
+            // Already handled classLabel
+        } else if output.featureValue(for: name)?.type == .dictionary {
+            // Already handled classLabelProbs
         } else {
             print("- Found output of other type: \(name)")
         }
     }
 
-    if let logitName = identifiedLogitOutputName, let preSigmoidLogitsOutput = output.featureValue(for: logitName)?.multiArrayValue {
-        print("\\n--- Pre-Sigmoid Logits Statistics (from output: \(logitName)) ---")
-        var logits: [Float] = []
-        if preSigmoidLogitsOutput.dataType == .float32 {
-            let count = preSigmoidLogitsOutput.count
+    if let rawName = rawKerasOutputName, let rawOutputTensor = output.featureValue(for: rawName)?.multiArrayValue {
+        print("\\n--- Raw Keras Output Tensor Statistics (from output: \(rawName)) ---")
+        var values: [Float] = []
+        if rawOutputTensor.dataType == .float32 {
+            let count = rawOutputTensor.count
             for i in 0..<count {
-                logits.append(preSigmoidLogitsOutput[i].floatValue)
+                values.append(rawOutputTensor[i].floatValue)
             }
 
-            if let maxLogit = logits.max() {
-                print(String(format: "Max Logit: %.6f", maxLogit))
+            if let maxValue = values.max() {
+                print(String(format: "Max Value: %.6f", maxValue))
             } else {
-                print("Max Logit: N/A (array was empty or contained non-comparable values)")
+                print("Max Value: N/A")
             }
             
-            if logits.isEmpty {
-                print("Mean Logit: N/A (array is empty)")
+            if values.isEmpty {
+                print("Mean Value: N/A")
             } else {
-                let sumLogits = logits.reduce(0, +)
-                let meanLogit = sumLogits / Float(logits.count)
-                print(String(format: "Mean Logit: %.6f", meanLogit))
+                let sumValues = values.reduce(0, +)
+                let meanValue = sumValues / Float(values.count)
+                print(String(format: "Mean Value: %.6f", meanValue))
             }
-            print("Number of logit values processed: \\(logits.count) from MLMultiArray with total count: \(preSigmoidLogitsOutput.count)")
+            print("Number of values processed: \\(values.count) from MLMultiArray with total count: \(rawOutputTensor.count)")
+            
+            // Check range
+            let valuesGreaterThanOne = values.filter { $0 > 1.0 }.count
+            let valuesLessThanZero = values.filter { $0 < 0.0 }.count
+            print("Values > 1.0: \\(valuesGreaterThanOne)")
+            print("Values < 0.0: \\(valuesLessThanZero)")
+
         } else {
-            print("Error: Expected MLMultiArray for logits ('\(logitName)') to be Float32, but found \(preSigmoidLogitsOutput.dataType.rawValue). Cannot process logits.")
+            print("Error: Expected MLMultiArray for raw Keras output ('\(rawName)') to be Float32, but found \(rawOutputTensor.dataType.rawValue).")
         }
     } else {
-        print("\\n--- Pre-Sigmoid Logits Statistics ---")
-        if identifiedLogitOutputName != nil {
-             print("Could not retrieve MLMultiArray for presumed logit output: '\(identifiedLogitOutputName!)'. It might not be an MLMultiArray or was not found.")
+        print("\\n--- Raw Keras Output Tensor Statistics ---")
+        if rawKerasOutputName != nil {
+             print("Could not retrieve MLMultiArray for presumed raw Keras output: '\(rawKerasOutputName!)'.")
         } else {
-            print("Could not identify a candidate for pre_sigmoid_logits output. Searched for 'Identity_1' or 'pre_sigmoid_logits'.")
-            print("Please check the 'All Available MLMultiArray Outputs' list above and verify output names.")
+            print("Could not identify a candidate for the raw Keras output tensor (expected shape [1, 6522]).")
+            print("Please check the 'All Available MLMultiArray Outputs' list above.")
         }
     }
-    // --- END MODIFIED ---
     
 } catch {
     print("Error: \\(error)")
@@ -498,35 +516,26 @@ def process_segment(segment, compiled_model_path, sample_rate, segment_index):
                                                    output=''.join(stdout_lines), stderr=stderr)
             
             # Extract species probabilities from the output
-            # This part needs to be robust to the actual name of the probability dictionary
             output_lines = stdout_lines
             
-            # Try to find the probability dictionary by common names
-            prob_dict_key = "sigmoid_output_probs" # Default from our ClassifierConfig
-            # Check if "classLabel_probs" is present if the default isn't found (fallback)
-            # This part is tricky as the Swift code itself now handles the parsing.
-            # The Python script here just collects what the Swift script prints.
-
-            # Find where the top predictions start
             start_idx = -1
             for i, line in enumerate(output_lines):
-                if "Top 10 predictions:" in line: # This line is printed by the Swift script
-                    start_idx = i + 3  # Skip the header and separator lines
+                if "Top 10 predictions:" in line: 
+                    start_idx = i + 3 
                     break
             
-            # Extract species and probabilities
             if start_idx > 0:
                 for i in range(start_idx, len(output_lines)):
                     line = output_lines[i].strip()
                     if not line or "Total species" in line or "Confidence distribution:" in line:
-                        break # Stop if we hit the end of predictions or next section
+                        break 
                     
                     parts = line.split('|')
                     if len(parts) >= 3:
                         try:
                             species = parts[1].strip()
                             prob_str = parts[2].strip()
-                            if species and prob_str: # Ensure they are not empty
+                            if species and prob_str: 
                                 prob = float(prob_str)
                                 species_probs[species] = prob
                         except ValueError:
@@ -538,7 +547,6 @@ def process_segment(segment, compiled_model_path, sample_rate, segment_index):
             print(f"Command output: {e.output}")
             print(f"Command stderr: {e.stderr}")
     
-    # Clean up temporary file
     if os.path.exists(temp_audio_file):
         os.remove(temp_audio_file)
     
@@ -546,7 +554,7 @@ def process_segment(segment, compiled_model_path, sample_rate, segment_index):
 
 def main():
     parser = argparse.ArgumentParser(description='Test BirdNET CoreML model using Swift')
-    parser.add_argument('--model', default='/Users/grego/Developer/BirdNET/BirdNET-CoreML/model/BirdNET_6000_RAW_with_logits.mlpackage',
+    parser.add_argument('--model', default='/Users/grego/Developer/BirdNET/BirdNET-CoreML/model/BirdNET_6000_RAW.mlpackage',
                         help='Path to the CoreML model (either .mlpackage or .mlmodel)')
     parser.add_argument('--audio', default='/Users/grego/Developer/BirdNET/verification/soundscape.wav',
                         help='Path to the audio file')
@@ -559,17 +567,12 @@ def main():
     
     args = parser.parse_args()
     
-    # Load the entire audio file
     audio, sr = load_audio(args.audio, args.sample_rate)
-    
-    # Segment the audio into 3-second chunks
     segments = segment_audio(audio, sr, args.segment_duration)
     
-    # Compile the model once
     print("\n--- Compiling the CoreML model (this will be done only once) ---")
     compiled_model_path = compile_model(args.model)
     
-    # Process each segment and collect results
     all_species = {}
     segment_detections = []
     
@@ -577,7 +580,6 @@ def main():
         print(f"\nProcessing segment {i+1} of {len(segments)}")
         species_probs = process_segment(segment, compiled_model_path, sr, i)
         
-        # Store segment results
         segment_start_time = i * args.segment_duration
         segment_end_time = min((i + 1) * args.segment_duration, len(audio) / sr)
         
@@ -588,7 +590,6 @@ def main():
             "detections": []
         }
         
-        # Add detections to segment results
         for species, prob in species_probs.items():
             if prob >= args.confidence_threshold:
                 segment_results["detections"].append({
@@ -596,7 +597,6 @@ def main():
                     "confidence": prob
                 })
                 
-                # Update the overall species dictionary
                 if species in all_species:
                     all_species[species] = max(all_species[species], prob)
                 else:
@@ -604,7 +604,6 @@ def main():
         
         segment_detections.append(segment_results)
     
-    # Print overall results
     print("\n" + "="*50)
     print("OVERALL RESULTS")
     print("="*50)
@@ -612,7 +611,6 @@ def main():
     print(f"Number of segments processed: {len(segments)}")
     print(f"Total unique species detected: {len(all_species)}")
     
-    # Print all detected species sorted by confidence
     print("\nAll detected species (sorted by confidence):")
     print("Rank | Species | Max Confidence")
     print("-----|---------|---------------")
@@ -621,7 +619,6 @@ def main():
     for i, (species, prob) in enumerate(sorted_species):
         print(f"{i+1}. | {species} | {prob:.6f}")
     
-    # Print segment-by-segment detections
     print("\nDetections by segment:")
     for segment in segment_detections:
         print(f"\nSegment {segment['segment_index']+1} ({segment['start_time']} - {segment['end_time']}):")
@@ -632,7 +629,38 @@ def main():
             
         for detection in sorted(segment['detections'], key=lambda x: x['confidence'], reverse=True):
             print(f"  - {detection['species']}: {detection['confidence']:.6f}")
-    
+
+    # --- Extended: Compare detected species to expected species list ---
+    species_list_path = "/Users/grego/Developer/BirdNET/BirdNET-Analyzer/birdnet_analyzer/example/species_list.txt"
+    try:
+        with open(species_list_path, "r") as f:
+            expected_species = set(line.strip() for line in f if line.strip())
+        detected_species = set(all_species.keys())
+
+        print("\n" + "="*50)
+        print("COMPARISON TO EXPECTED SPECIES LIST")
+        print("="*50)
+        print(f"Species in expected list: {len(expected_species)}")
+        print(f"Species detected: {len(detected_species)}")
+        print(f"Expected species detected (true positives): {len(detected_species & expected_species)}")
+        print(f"Expected species missed (false negatives): {len(expected_species - detected_species)}")
+        print(f"Unexpected species detected (false positives): {len(detected_species - expected_species)}")
+
+        print("\nExpected species detected:")
+        for s in sorted(detected_species & expected_species):
+            print(f"  - {s}")
+
+        print("\nExpected species missed:")
+        for s in sorted(expected_species - detected_species):
+            print(f"  - {s}")
+
+        print("\nUnexpected species detected:")
+        for s in sorted(detected_species - expected_species):
+            print(f"  - {s}")
+
+    except Exception as e:
+        print(f"\nCould not compare to expected species list: {e}")
+
     print("\nAnalysis complete!")
 
 if __name__ == "__main__":
