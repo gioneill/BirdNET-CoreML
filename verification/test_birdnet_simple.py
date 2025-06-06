@@ -197,8 +197,8 @@ func loadAudio(from url: URL) -> [Float]? {
             return nil
         }
         
-        // Read the audio file into the buffer
-        try audioFile.read(into: buffer)
+        // Read the audio file into the buffer, ensuring exactly 3 seconds (144000 frames)
+        try audioFile.read(into: buffer, frameCount: frameCount)
         
         // Convert buffer to array of floats
         guard let floatChannelData = buffer.floatChannelData else {
@@ -208,10 +208,15 @@ func loadAudio(from url: URL) -> [Float]? {
         
         let channelData = floatChannelData[0]
         var audioArray = [Float](repeating: 0, count: Int(frameCount))
-        
         // Copy data from buffer to array
         for i in 0..<Int(buffer.frameLength) {
             audioArray[i] = channelData[i]
+        }
+        // Truncate or pad to exactly 144000 samples
+        if audioArray.count > Int(frameCount) {
+            audioArray = Array(audioArray.prefix(Int(frameCount)))
+        } else if audioArray.count < Int(frameCount) {
+            audioArray += [Float](repeating: 0, count: Int(frameCount) - audioArray.count)
         }
 
         // Print detailed stats for debugging
@@ -244,7 +249,6 @@ func loadAudio(from url: URL) -> [Float]? {
             print(String(format: "→ Audio stats (post‐norm): min = %.3f, max = %.3f, mean = %.6f, std = %.6f",
                         newMin, newMax, newMean, newStd))
         }
-        
         return audioArray
     } catch {
         print("Error loading audio: \\(error)")
@@ -288,35 +292,54 @@ do {
     }
     
     print("\\nAudio loaded: \\(audioData.count) samples")
-    
+    // --- Ensure normalization occurs BEFORE creating MLMultiArray and using as model input ---
+    var normalizedAudioData = audioData
+    let maxAmp = normalizedAudioData.max() ?? 0
+    let minAmp = normalizedAudioData.min() ?? 0
+    if maxAmp > 2.0 || minAmp < -2.0 {
+        print("⚠️  Detected large-scale audio samples in input—dividing by 32768.0 prior to MLMultiArray conversion.")
+        for i in 0..<normalizedAudioData.count {
+            normalizedAudioData[i] /= 32768.0
+        }
+        // Print post-norm stats
+        let newMax = normalizedAudioData.max() ?? 0
+        let newMin = normalizedAudioData.min() ?? 0
+        let newMean = normalizedAudioData.reduce(0, +) / Float(normalizedAudioData.count)
+        let newStd: Float = {
+            let mean = newMean
+            let sumSq = normalizedAudioData.reduce(0) { $0 + ($1 - mean) * ($1 - mean) }
+            return sqrt(sumSq / Float(normalizedAudioData.count))
+        }()
+        print(String(format: "→ Audio stats (final post‐norm for MLMultiArray): min = %.3f, max = %.3f, mean = %.6f, std = %.6f",
+                    newMin, newMax, newMean, newStd))
+    }
+
     // Create input for the model
     let inputName = model.modelDescription.inputDescriptionsByName.first!.key
-    
+
     // Create a multi-array with the audio data based on the model's expected input shape
     var multiArray: MLMultiArray
-    
+
     // Check the input shape from the model description
     let inputShape = model.modelDescription.inputDescriptionsByName.first!.value.multiArrayConstraint!.shape
-    
+
     if inputShape.count == 3 {
         // For models expecting 3D input (like .mlmodel files with shape [1, 384, 257])
         print("Creating 3D input array with shape \\(inputShape)")
         multiArray = try MLMultiArray(shape: inputShape, dataType: .float32)
-        
         // Fill the multi-array with audio data
         // Note: This is a simplified approach and may need adjustment based on the specific model
         let totalElements = inputShape.reduce(1, { $0 * $1.intValue })
-        for i in 0..<min(audioData.count, totalElements) {
-            multiArray[i] = NSNumber(value: audioData[i])
+        for i in 0..<min(normalizedAudioData.count, totalElements) {
+            multiArray[i] = NSNumber(value: normalizedAudioData[i])
         }
     } else {
         // For models expecting 2D input (like .mlpackage files with shape [1, 144000])
         print("Creating 2D input array with shape [1, 144000]")
         multiArray = try MLMultiArray(shape: [1, 144000], dataType: .float32)
-        
         // Fill the multi-array with audio data
-        for i in 0..<min(audioData.count, 144000) {
-            multiArray[i] = NSNumber(value: audioData[i])
+        for i in 0..<min(normalizedAudioData.count, 144000) {
+            multiArray[i] = NSNumber(value: normalizedAudioData[i])
         }
     }
     
@@ -587,7 +610,7 @@ def process_segment(segment, compiled_model_path, sample_rate, segment_index):
 
 def main():
     parser = argparse.ArgumentParser(description='Test BirdNET CoreML model using Swift')
-    parser.add_argument('--model', default='/Users/grego/Developer/BirdNET/BirdNET-CoreML/model/BirdNET_6000_RAW.mlpackage',
+    parser.add_argument('--model', default='/Users/grego/Developer/BirdNET/BirdNET-CoreML/coreml_export/output/audio-model.mlpackage',
                         help='Path to the CoreML model (either .mlpackage or .mlmodel)')
     parser.add_argument('--audio', default='verification/crow.wav',
                         help='Path to the audio file')
