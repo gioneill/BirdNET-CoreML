@@ -3,9 +3,8 @@ import os
 import sys
 import scipy.io.wavfile as wav
 from scipy import signal
-import coremltools
-from collections import Counter
 import argparse
+import tensorflow as tf
 
 def load_audio(audio_path, target_sr=48000):
     """Load audio using scipy and return the full audio track."""
@@ -46,16 +45,26 @@ def load_labels(label_path):
     return labels
 
 def main():
-    parser = argparse.ArgumentParser(description="Analyze a soundscape file with a CoreML model.")
+    parser = argparse.ArgumentParser(description="Analyze a soundscape file with a Keras model.")
     parser.add_argument('--audio_path', type=str, default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "soundscape.wav"), help='Path to the audio file to analyze.')
-    parser.add_argument('--threshold', type=float, default=0.005, help='Probability threshold for displaying species.')
+    parser.add_argument('--threshold', type=float, default=0.03, help='Probability threshold for displaying species.')
     args = parser.parse_args()
 
-    model_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "coreml_export/output/audio-model.mlpackage")
+    # Add parent directory to path for importing custom_layers
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "coreml_export/input"))
+    from MelSpecLayerSimple import MelSpecLayerSimple
+    
+    if hasattr(tf.keras, "saving") and hasattr(tf.keras.saving, "register_keras_serializable"):
+        tf.keras.saving.register_keras_serializable()(MelSpecLayerSimple)
+    else:
+        tf.keras.utils.get_custom_objects()["MelSpecLayerSimple"] = MelSpecLayerSimple
+
+    # Use the known-good model
+    model_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "coreml_export/input/audio-model.h5")
     label_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "coreml_export/input/labels/en_us.txt")
     
-    print(f"Loading CoreML model from {model_path}")
-    model = coremltools.models.MLModel(model_path)
+    print(f"Loading Keras model from {model_path}")
+    model = tf.keras.models.load_model(model_path, custom_objects={"MelSpecLayerSimple": MelSpecLayerSimple})
     print("Model loaded.")
 
     # Load labels
@@ -69,9 +78,6 @@ def main():
     segment_duration = 3.0
     segment_length = int(segment_duration * sr)
     
-    input_name = model.get_spec().description.input[0].name
-    output_name = model.get_spec().description.output[0].name
-
     # Process audio in chunks
     for i in range(0, len(audio), segment_length):
         start_time = i / sr
@@ -83,10 +89,10 @@ def main():
         if len(chunk) < segment_length:
             chunk = np.pad(chunk, (0, segment_length - len(chunk)), 'constant')
         
+        # Model expects shape [1, 144000]
         input_data = np.expand_dims(chunk, axis=0).astype(np.float32)
         
-        predictions = model.predict({input_name: input_data})
-        preds = predictions[output_name]
+        preds = model.predict(input_data)
 
         if preds.ndim == 2 and preds.shape[0] == 1:
             preds = preds[0]
@@ -97,7 +103,7 @@ def main():
         # Sort the predictions by value (descending)
         sorted_indices = sorted(top_indices, key=lambda i: preds[i], reverse=True)
         
-        if not sorted_indices:
+        if not np.any(sorted_indices):
             print("No species found above the threshold for this segment.")
         else:
             for rank, idx in enumerate(sorted_indices):
