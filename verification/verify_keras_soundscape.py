@@ -65,9 +65,10 @@ def main():
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "coreml_export/input"))
     from MelSpecLayerSimple import MelSpecLayerSimple
     
-    if hasattr(tf.keras, "saving") and hasattr(tf.keras.saving, "register_keras_serializable"):
+    # Register custom layer for model loading
+    try:
         tf.keras.saving.register_keras_serializable()(MelSpecLayerSimple)
-    else:
+    except AttributeError:
         tf.keras.utils.get_custom_objects()["MelSpecLayerSimple"] = MelSpecLayerSimple
 
     # Use the known-good model
