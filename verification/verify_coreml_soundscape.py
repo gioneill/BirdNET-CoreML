@@ -6,9 +6,20 @@ from scipy import signal
 import coremltools
 from collections import Counter
 import argparse
+try:
+    import librosa
+except ImportError:
+    print("Librosa is required for MP3 support. Please install it via 'pip install librosa'", file=sys.stderr)
+    sys.exit(1)
 
 def load_audio(audio_path, target_sr=48000):
     """Load audio using scipy and return the full audio track."""
+    ext = os.path.splitext(audio_path)[1].lower()
+    if ext == ".mp3":
+        # Load MP3 using librosa
+        audio, sr = librosa.load(audio_path, sr=target_sr, mono=True)
+        return audio.astype(np.float32), sr
+
     # Read audio file
     sr, audio = wav.read(audio_path)
     
