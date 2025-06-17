@@ -59,7 +59,7 @@ def load_labels(label_path):
 def main():
     parser = argparse.ArgumentParser(description="Analyze a soundscape file with a CoreML model.")
     parser.add_argument('--audio_path', type=str, default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "soundscape.wav"), help='Path to the audio file to analyze.')
-    parser.add_argument('--threshold', type=float, default=0.005, help='Probability threshold for displaying species.')
+    parser.add_argument('--threshold', type=float, default=0.03, help='Probability threshold for displaying species.')
     args = parser.parse_args()
 
     model_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "coreml_export/output/audio-model.mlpackage")

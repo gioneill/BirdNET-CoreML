@@ -61,9 +61,9 @@ def main():
     parser.add_argument('--threshold', type=float, default=0.03, help='Probability threshold for displaying species.')
     args = parser.parse_args()
 
-    # Add parent directory to path for importing custom_layers
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "coreml_export/input"))
-    from MelSpecLayerSimple import MelSpecLayerSimple
+    # Add coreml_export to path for importing MelSpecLayerSimple
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "coreml_export"))
+    from coreml_export.input.MelSpecLayerSimple import MelSpecLayerSimple
     
     # Register custom layer for model loading
     try:
