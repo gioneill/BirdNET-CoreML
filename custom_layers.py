@@ -1,6 +1,6 @@
 import tensorflow as tf
-from tensorflow import keras as k
-from tensorflow.keras import layers as l
+k = tf.keras
+l = tf.keras.layers
 
 class SimpleSpecLayer(l.Layer):
 
