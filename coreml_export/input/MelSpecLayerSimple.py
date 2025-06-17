@@ -37,16 +37,18 @@ class MelSpecLayerSimple(tf.keras.layers.Layer):
         inputs = tf.math.multiply(inputs, 2.0)
 
         # Perform STFT
-        spec = tf.signal.stft(inputs,
-                              self.frame_length,
-                              self.frame_step,
-                              fft_length=self.frame_length,
-                              window_fn=tf.signal.hann_window,
-                              pad_end=False,
-                              name='stft')
+        complex_spec = tf.signal.stft(inputs,
+                                      self.frame_length,
+                                      self.frame_step,
+                                      fft_length=self.frame_length,
+                                      window_fn=tf.signal.hann_window,
+                                      pad_end=False,
+                                      name='stft')
 
-        # Cast from complex to float
-        spec = tf.dtypes.cast(spec, tf.float32)
+        # Convert complex to magnitude spectrum manually (avoids ComplexAbs op)
+        real = tf.math.real(complex_spec)
+        imag = tf.math.imag(complex_spec)
+        spec = tf.math.sqrt(real * real + imag * imag)
 
         # Apply mel scale
         spec = tf.tensordot(spec, self.mel_filterbank, 1)

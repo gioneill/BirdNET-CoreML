@@ -11,13 +11,32 @@ from pathlib import Path
 
 import coremltools as ct
 import tensorflow as tf
-import keras  # standalone Keras 3 API
 
 # Make repo‑root importable so that `custom_layers` and `coreml_export.input` resolve
-sys.path.append(str(Path(__file__).resolve().parent.parent))
+repo_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(repo_root))
 
-from custom_layers import SimpleSpecLayer
-from coreml_export.input.MelSpecLayerSimple import MelSpecLayerSimple
+# Import with more explicit paths
+try:
+    from custom_layers import SimpleSpecLayer
+except ImportError:
+    # Try importing from the current directory structure
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("custom_layers", repo_root / "custom_layers.py")
+    custom_layers_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(custom_layers_module)
+    SimpleSpecLayer = custom_layers_module.SimpleSpecLayer
+
+try:
+    from coreml_export.input.MelSpecLayerSimple import MelSpecLayerSimple
+except ImportError:
+    # Try importing with direct path
+    import importlib.util
+    melspec_path = repo_root / "coreml_export" / "input" / "MelSpecLayerSimple.py"
+    spec = importlib.util.spec_from_file_location("MelSpecLayerSimple", melspec_path)
+    melspec_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(melspec_module)
+    MelSpecLayerSimple = melspec_module.MelSpecLayerSimple
 
 
 class LegacySimpleSpecLayer(SimpleSpecLayer):
@@ -86,17 +105,44 @@ def _load_any_model(path: Path):
 
     ext = path.suffix.lower()
     if ext in (".keras", ".h5"):
-        if ext == ".h5":
-            return tf.keras.models.load_model(path, compile=False, custom_objects=custom)
-        # .keras uses the Keras 3 saving API
-        return keras.saving.load_model(path, compile=False, custom_objects=custom)
+        # Use tf.keras for both .h5 and .keras files
+        return tf.keras.models.load_model(path, compile=False, custom_objects=custom)
 
     if path.is_dir():
-        # Wrap a SavedModel as a single TFSMLayer so we can feed it to coremltools
-        from keras.layers import TFSMLayer
-
-        layer = TFSMLayer(str(path), call_endpoint="serving_default")
-        return tf.keras.Sequential([layer])
+        # For SavedModel directories, load directly using tf.saved_model.load
+        # and create a callable wrapper
+        loaded_model = tf.saved_model.load(str(path))
+        
+        # Create a simple wrapper function that can be used like a Keras model
+        class SavedModelWrapper:
+            def __init__(self, saved_model):
+                self.saved_model = saved_model
+                self.serving_fn = saved_model.signatures.get("serving_default")
+                if self.serving_fn is None:
+                    # Try to get the first available signature
+                    signatures = list(saved_model.signatures.keys())
+                    if signatures:
+                        self.serving_fn = saved_model.signatures[signatures[0]]
+                    else:
+                        raise ValueError("No signatures found in SavedModel")
+                
+                # Extract input specs for the inputs property
+                self._inputs = [tf.TensorSpec(shape=inp.shape, dtype=inp.dtype, name=inp.name) 
+                              for inp in self.serving_fn.inputs]
+            
+            def __call__(self, inputs, **kwargs):
+                # Convert inputs to the expected format
+                if isinstance(inputs, tf.Tensor):
+                    # Assume single input - get the input name from the signature
+                    input_name = list(self.serving_fn.structured_input_signature[1].keys())[0]
+                    inputs = {input_name: inputs}
+                return self.serving_fn(**inputs)
+            
+            @property
+            def inputs(self):
+                return self._inputs
+        
+        return SavedModelWrapper(loaded_model)
 
     raise ValueError(f"Unsupported input format: {path}")
 
