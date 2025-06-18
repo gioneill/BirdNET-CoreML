@@ -16,9 +16,9 @@ except ImportError as e:
     sys.exit(1)
 
 def load_audio_with_tf(audio_path, target_sr=48000):
-    """Load audio file using TensorFlow."""
+    """Load audio file using TensorFlow with fallback for 8-bit WAV files."""
     try:
-        # Try TensorFlow audio loading
+        # Try TensorFlow audio loading first (works for 16-bit WAV)
         audio_binary = tf.io.read_file(audio_path)
         audio, sr = tf.audio.decode_wav(audio_binary)
         audio = tf.squeeze(audio, axis=-1)  # Remove channel dimension if mono
@@ -27,20 +27,87 @@ def load_audio_with_tf(audio_path, target_sr=48000):
         audio = audio.numpy().astype(np.float32)
         sr = sr.numpy()
         
-        # Resample if needed (simple linear interpolation)
-        if sr != target_sr:
-            # Simple resampling using linear interpolation
-            old_len = len(audio)
-            new_len = int(old_len * target_sr / sr)
-            indices = np.linspace(0, old_len - 1, new_len)
-            audio = np.interp(indices, np.arange(old_len), audio)
-            sr = target_sr
-        
-        return audio.astype(np.float32), sr
+        print(f"Loaded {audio_path} using TensorFlow (16-bit)")
         
     except Exception as e:
-        print(f"Could not load audio file {audio_path}: {e}")
-        sys.exit(1)
+        if "Can only read 16-bit WAV files" in str(e):
+            print(f"TensorFlow failed on 8-bit WAV, using manual WAV parsing...")
+            # Manual WAV file parsing for 8-bit files
+            audio, sr = load_8bit_wav_manual(audio_path)
+        else:
+            print(f"Could not load audio file {audio_path}: {e}")
+            sys.exit(1)
+    
+    # Resample if needed (simple linear interpolation)
+    if sr != target_sr:
+        old_len = len(audio)
+        new_len = int(old_len * target_sr / sr)
+        indices = np.linspace(0, old_len - 1, new_len)
+        audio = np.interp(indices, np.arange(old_len), audio)
+        sr = target_sr
+    
+    return audio.astype(np.float32), sr
+
+def load_8bit_wav_manual(audio_path):
+    """Manually parse 8-bit WAV files."""
+    import struct
+    
+    with open(audio_path, 'rb') as f:
+        # Read WAV header
+        riff = f.read(4)  # Should be b'RIFF'
+        if riff != b'RIFF':
+            raise ValueError("Not a valid WAV file")
+        
+        file_size = struct.unpack('<I', f.read(4))[0]
+        wave = f.read(4)  # Should be b'WAVE'
+        if wave != b'WAVE':
+            raise ValueError("Not a valid WAV file")
+        
+        # Find fmt chunk
+        while True:
+            chunk_id = f.read(4)
+            chunk_size = struct.unpack('<I', f.read(4))[0]
+            
+            if chunk_id == b'fmt ':
+                fmt_data = f.read(chunk_size)
+                audio_format = struct.unpack('<H', fmt_data[0:2])[0]
+                num_channels = struct.unpack('<H', fmt_data[2:4])[0]
+                sample_rate = struct.unpack('<I', fmt_data[4:8])[0]
+                bits_per_sample = struct.unpack('<H', fmt_data[14:16])[0]
+                break
+            else:
+                f.seek(chunk_size, 1)  # Skip this chunk
+        
+        # Find data chunk
+        while True:
+            chunk_id = f.read(4)
+            chunk_size = struct.unpack('<I', f.read(4))[0]
+            
+            if chunk_id == b'data':
+                break
+            else:
+                f.seek(chunk_size, 1)  # Skip this chunk
+        
+        # Read audio data
+        audio_data = f.read(chunk_size)
+        
+        if bits_per_sample == 8:
+            # 8-bit samples are unsigned (0-255), convert to signed (-1 to 1)
+            audio = np.frombuffer(audio_data, dtype=np.uint8).astype(np.float32)
+            audio = (audio - 128.0) / 128.0  # Convert to range [-1, 1]
+        elif bits_per_sample == 16:
+            # 16-bit samples are signed
+            audio = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32)
+            audio = audio / 32768.0  # Convert to range [-1, 1]
+        else:
+            raise ValueError(f"Unsupported bit depth: {bits_per_sample}")
+        
+        # Convert to mono if stereo
+        if num_channels == 2:
+            audio = audio.reshape(-1, 2).mean(axis=1)
+        
+        print(f"Loaded 8-bit WAV: {len(audio)} samples, {sample_rate} Hz, {num_channels} channel(s)")
+        return audio, sample_rate
 
 def load_labels(label_path):
     """Load labels from file."""
