@@ -1,46 +1,46 @@
 import numpy as np
 import os
 import sys
-import scipy.io.wavfile as wav
-from scipy import signal
 import coremltools
-from collections import Counter
 import argparse
+
+# Handle TensorFlow import issues
 try:
-    import librosa
-except ImportError:
-    print("Librosa is required for MP3 support. Please install it via 'pip install librosa'", file=sys.stderr)
+    import tensorflow as tf
+    # Ensure we can access keras
+    if not hasattr(tf, 'keras'):
+        from tensorflow import keras
+        tf.keras = keras
+except ImportError as e:
+    print(f"TensorFlow import error: {e}")
     sys.exit(1)
 
-def load_audio(audio_path, target_sr=48000):
-    """Load audio using scipy and return the full audio track."""
-    ext = os.path.splitext(audio_path)[1].lower()
-    if ext == ".mp3":
-        # Load MP3 using librosa
-        audio, sr = librosa.load(audio_path, sr=target_sr, mono=True)
+def load_audio_with_tf(audio_path, target_sr=48000):
+    """Load audio file using TensorFlow."""
+    try:
+        # Try TensorFlow audio loading
+        audio_binary = tf.io.read_file(audio_path)
+        audio, sr = tf.audio.decode_wav(audio_binary)
+        audio = tf.squeeze(audio, axis=-1)  # Remove channel dimension if mono
+        
+        # Convert to numpy
+        audio = audio.numpy().astype(np.float32)
+        sr = sr.numpy()
+        
+        # Resample if needed (simple linear interpolation)
+        if sr != target_sr:
+            # Simple resampling using linear interpolation
+            old_len = len(audio)
+            new_len = int(old_len * target_sr / sr)
+            indices = np.linspace(0, old_len - 1, new_len)
+            audio = np.interp(indices, np.arange(old_len), audio)
+            sr = target_sr
+        
         return audio.astype(np.float32), sr
-
-    # Read audio file
-    sr, audio = wav.read(audio_path)
-    
-    # Convert to float32 and normalize
-    if audio.dtype == np.int16:
-        audio = audio.astype(np.float32) / 32768.0
-    elif audio.dtype == np.int32:
-        audio = audio.astype(np.float32) / 2147483648.0
-    elif audio.dtype == np.uint8:
-        audio = (audio.astype(np.float32) - 128) / 128.0
-    
-    # Convert to mono if stereo
-    if len(audio.shape) > 1:
-        audio = np.mean(audio, axis=1)
-    
-    # Resample if needed
-    if sr != target_sr:
-        audio = signal.resample(audio, int(len(audio) * target_sr / sr))
-        sr = target_sr
-    
-    return audio, sr
+        
+    except Exception as e:
+        print(f"Could not load audio file {audio_path}: {e}")
+        sys.exit(1)
 
 def load_labels(label_path):
     """Load labels from file."""
@@ -59,14 +59,14 @@ def load_labels(label_path):
 def main():
     parser = argparse.ArgumentParser(description="Analyze a soundscape file with a CoreML model.")
     parser.add_argument('--audio_path', type=str, default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "soundscape.wav"), help='Path to the audio file to analyze.')
+    parser.add_argument('--model_path', type=str, default=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "coreml_export/output/audio-model-export-corrected.mlpackage"), help='Path to the CoreML model.')
     parser.add_argument('--threshold', type=float, default=0.03, help='Probability threshold for displaying species.')
     args = parser.parse_args()
 
-    model_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "coreml_export/output/audio-model.mlpackage")
     label_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "coreml_export/input/labels/en_us.txt")
     
-    print(f"Loading CoreML model from {model_path}")
-    model = coremltools.models.MLModel(model_path)
+    print(f"Loading CoreML model from {args.model_path}")
+    model = coremltools.models.MLModel(args.model_path)
     print("Model loaded.")
 
     # Load labels
@@ -74,7 +74,7 @@ def main():
     labels = load_labels(label_path)
     print(f"Loaded {len(labels)} labels")
 
-    audio, sr = load_audio(args.audio_path)
+    audio, sr = load_audio_with_tf(args.audio_path)
     print(f"Audio loaded from {args.audio_path}: {len(audio)/sr:.2f} seconds, {sr} Hz")
 
     segment_duration = 3.0

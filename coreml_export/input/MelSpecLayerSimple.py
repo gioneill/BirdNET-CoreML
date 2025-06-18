@@ -45,9 +45,10 @@ class MelSpecLayerSimple(tf.keras.layers.Layer):
                                       pad_end=False,
                                       name='stft')
 
-        # Convert complex to real part (equivalent to tf.dtypes.cast(complex_spec, tf.float32))
-        # This avoids the unsupported ComplexAbs operation in Core ML
-        spec = tf.math.real(complex_spec)
+        # Convert complex to magnitude spectrum manually (avoids ComplexAbs op)
+        real = tf.math.real(complex_spec)
+        imag = tf.math.imag(complex_spec)
+        spec = tf.math.sqrt(real * real + imag * imag)
 
         # Apply mel scale
         spec = tf.tensordot(spec, self.mel_filterbank, 1)
