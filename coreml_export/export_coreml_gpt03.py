@@ -1,8 +1,7 @@
-
 #!/usr/bin/env python3
 """
 Convert a BirdNET .keras or .h5 model — or a TensorFlow SavedModel directory —
-to a Core ML .mlpackage ready for iOS 15 +.
+to a Core ML .mlpackage ready for iOS 15 +.
 """
 
 import argparse
@@ -27,16 +26,18 @@ except ImportError:
     spec.loader.exec_module(custom_layers_module)
     SimpleSpecLayer = custom_layers_module.SimpleSpecLayer
 
-try:
-    from coreml_export.input.MelSpecLayerSimple import MelSpecLayerSimple
-except ImportError:
-    # Try importing with direct path
+
+def _load_melspec_layer(filename: str):
+    """Load MelSpecLayerSimple from the specified filename."""
     import importlib.util
-    melspec_path = repo_root / "coreml_export" / "input" / "MelSpecLayerSimple.py"
+    melspec_path = repo_root / "coreml_export" / "input" / filename
+    if not melspec_path.exists():
+        raise FileNotFoundError(f"MelSpecLayerSimple file not found: {melspec_path}")
+    
     spec = importlib.util.spec_from_file_location("MelSpecLayerSimple", melspec_path)
     melspec_module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(melspec_module)
-    MelSpecLayerSimple = melspec_module.MelSpecLayerSimple
+    return melspec_module.MelSpecLayerSimple
 
 
 class LegacySimpleSpecLayer(SimpleSpecLayer):
@@ -74,7 +75,7 @@ class LegacySimpleSpecLayer(SimpleSpecLayer):
 
 
 def _parse_args():
-    p = argparse.ArgumentParser(description="Export Keras/SavedModel to Core ML")
+    p = argparse.ArgumentParser(description="Export Keras/SavedModel to Core ML")
     p.add_argument(
         "--in_path", required=True, help="Input .keras / .h5 file or SavedModel directory"
     )
@@ -91,16 +92,21 @@ def _parse_args():
         action="store_true",
         help="Keep weights in FP32 (otherwise down‑cast to FP16)",
     )
+    p.add_argument(
+        "--melspec_layer_file",
+        default="MelSpecLayerSimple_fixed.py",
+        help="Filename of the MelSpecLayerSimple implementation to use (default: MelSpecLayerSimple_fixed.py)",
+    )
     return p.parse_args()
 
 
-def _load_any_model(path: Path):
+def _load_any_model(path: Path, melspec_layer_class):
     """
     Load either a Keras model (.keras/.h5) or a TensorFlow SavedModel directory.
     """
     custom = {
         "SimpleSpecLayer": LegacySimpleSpecLayer,
-        "MelSpecLayerSimple": MelSpecLayerSimple,
+        "MelSpecLayerSimple": melspec_layer_class,
     }
 
     ext = path.suffix.lower()
@@ -150,10 +156,13 @@ def _load_any_model(path: Path):
 def main():
     args = _parse_args()
 
-    model = _load_any_model(Path(args.in_path))
+    # Load the specified MelSpecLayerSimple implementation
+    MelSpecLayerSimple = _load_melspec_layer(args.melspec_layer_file)
+
+    model = _load_any_model(Path(args.in_path), MelSpecLayerSimple)
     input_name = model.inputs[0].name.split(":")[0]
 
-    # 3‑second mono audio @ 48 kHz → 144 000 samples
+    # 3‑second mono audio @ 48 kHz → 144 000 samples
     audio_input = ct.TensorType(shape=(1, 144_000), name=input_name)
 
     target_attr = args.target.lower()
@@ -163,13 +172,13 @@ def main():
     mlmodel = ct.convert(
         model,
         inputs=[audio_input],
-        minimum_deployment_target=getattr(ct.target, target_attr),
-        compute_precision=(
-            ct.precision.FLOAT32 if args.keep_fp32 else ct.precision.FLOAT16
-        ),
+        # minimum_deployment_target=getattr(ct.target, target_attr),
+        # compute_precision=(
+        #     ct.precision.FLOAT32 if args.keep_fp32 else ct.precision.FLOAT16
+        # ),
     )
     mlmodel.save(args.out_path)
-    print(f"✅  Saved Core ML model to {args.out_path}")
+    print(f"✅  Saved Core ML model to {args.out_path}")
 
 
 if __name__ == "__main__":

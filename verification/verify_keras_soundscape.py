@@ -121,7 +121,7 @@ def main():
 
     # Add the specific input directory to path
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "coreml_export", "input"))
-    from MelSpecLayerSimple import MelSpecLayerSimple
+    from MelSpecLayerSimple_fixed import MelSpecLayerSimple
     
     # Register custom layer for model loading
     try:

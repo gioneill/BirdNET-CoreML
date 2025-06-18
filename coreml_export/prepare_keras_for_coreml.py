@@ -21,9 +21,14 @@ def import_custom_layer(py_path, class_name):
     return getattr(module, class_name)
 
 def main():
+    import os
+    
+    # Default path to the fixed MelSpecLayerSimple
+    default_layer_path = os.path.join(os.path.dirname(__file__), "input", "MelSpecLayerSimple_fixed.py")
+    
     parser = argparse.ArgumentParser(description="Prepare Keras model with custom layer for CoreML conversion")
     parser.add_argument("--input_model", type=str, required=True, help="Path to input Keras .h5 model")
-    parser.add_argument("--custom_layer", type=str, required=True, help="Path to custom layer .py file")
+    parser.add_argument("--custom_layer", type=str, default=default_layer_path, help=f"Path to custom layer .py file (default: {default_layer_path})")
     parser.add_argument("--output_model", type=str, required=True, help="Path to output .h5 model")
     args = parser.parse_args()
 
