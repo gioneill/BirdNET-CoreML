@@ -89,16 +89,6 @@ def _parse_args():
         default="output/meta-model.mlpackage",
         help="Output .mlpackage file (default: output/meta-model.mlpackage)"
     )
-    p.add_argument(
-        "--target",
-        default="ios15",
-        help="Minimum deployment target (e.g. ios15, macos12, tvos16)",
-    )
-    p.add_argument(
-        "--keep_fp32",
-        action="store_true",
-        help="Keep weights in FP32 (otherwise down‑cast to FP16)",
-    )
     return p.parse_args()
 
 
