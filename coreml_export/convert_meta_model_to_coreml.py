@@ -13,25 +13,63 @@ import argparse
 import sys
 from pathlib import Path
 
+import numpy as np
 import coremltools as ct
-import tensorflow as tf
+try:
+    import tensorflow as tf
+    from tensorflow import keras
+except ImportError:
+    try:
+        import keras
+        import tensorflow as tf
+    except ImportError:
+        print("❌ TensorFlow/Keras not available. Please install tensorflow and activate the proper environment.")
+        sys.exit(1)
 
 # Make repo‑root importable
 repo_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(repo_root))
 
 
-class MDataLayer(tf.keras.layers.Layer):
+class MDataLayer(keras.layers.Layer):
     """
     MDataLayer for the metadata model.
     Handles location/time data encoding for species occurrence prediction.
+    Transforms 3 inputs (lat, lon, week) into 144 features using sinusoidal encoding.
     """
     def __init__(self, embeddings=None, **kwargs):
         super().__init__(**kwargs)
         self.embeddings = embeddings
     
     def call(self, inputs):
-        return inputs
+        # inputs shape: (batch_size, 3) containing [lat, lon, week]
+        lat = inputs[:, 0:1]
+        lon = inputs[:, 1:2] 
+        week = inputs[:, 2:3]
+        
+        # Apply the encoding transformation
+        feats = []
+        
+        # Encode latitude (normalized to -1 to 1)
+        lat_norm = lat / 90.0
+        for k in range(1, 25):  # 24 frequencies
+            feats.append(tf.sin(k * np.pi * lat_norm))
+            feats.append(tf.cos(k * np.pi * lat_norm))
+        
+        # Encode longitude (normalized to -1 to 1)
+        lon_norm = lon / 180.0
+        for k in range(1, 25):  # 24 frequencies
+            feats.append(tf.sin(k * np.pi * lon_norm))
+            feats.append(tf.cos(k * np.pi * lon_norm))
+        
+        # Encode week (normalized to 0 to 1, cyclic)
+        week_norm = (week - 1) / 48.0
+        for k in range(1, 25):  # 24 frequencies
+            feats.append(tf.sin(k * 2 * np.pi * week_norm))
+            feats.append(tf.cos(k * 2 * np.pi * week_norm))
+        
+        # Concatenate all features
+        return tf.concat(feats, axis=-1)  # Output shape: (batch_size, 144)
     
     def get_config(self):
         config = super().get_config()
@@ -107,11 +145,13 @@ def main():
     # Get input name for CoreML conversion
     input_name = model.inputs[0].name.split(":")[0]
     
-    # Define input: 144 features for encoded location/time data
-    # Format: [lat_encoded(72), lon_encoded(72)] = 144 total features
-    meta_input = ct.TensorType(shape=(1, 144), name=input_name)
+    # Define input: 3 features (lat, lon, week)
+    # The MDataLayer will transform these into 144 encoded features internally
+    meta_input = ct.TensorType(shape=(1, 3), name=input_name, dtype=np.float32)
     
     print(f"Converting model with input: {meta_input}")
+    print(f"  Input features: [latitude, longitude, week]")
+    print(f"  MDataLayer transforms to 144 encoded features")
     
     # Convert to Core ML
     try:

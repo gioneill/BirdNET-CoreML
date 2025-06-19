@@ -88,21 +88,27 @@ def get_species_priors(lat: float, lon: float, week: int, meta_model) -> np.ndar
     Returns:
         np.ndarray: Array of 6522 species occurrence probabilities
     """
-    # Encode the metadata
-    encoded_input = encode_meta(lat, lon, week)
-    encoded_input = np.expand_dims(encoded_input, axis=0)  # Add batch dimension
+    # The new models take 3 inputs directly (lat, lon, week)
+    # No encoding needed - the MDataLayer handles encoding internally
+    
+    # Prepare input as [lat, lon, week]
+    input_data = np.array([[lat, lon, week]], dtype=np.float32)
     
     # Run inference
     if hasattr(meta_model, 'predict'):
-        # Keras model
-        predictions = meta_model.predict(encoded_input, verbose=0)
-        return predictions[0]  # Remove batch dimension
+        # Check if it's a Keras model (has compile method)
+        if hasattr(meta_model, 'compile'):
+            # Keras model
+            predictions = meta_model.predict(input_data, verbose=0)
+            return predictions[0]  # Remove batch dimension
+        else:
+            # CoreML model
+            input_name = list(meta_model.get_spec().description.input)[0].name
+            result = meta_model.predict({input_name: input_data})
+            output_name = list(result.keys())[0]
+            return result[output_name][0]  # Remove batch dimension
     else:
-        # Assume CoreML model
-        input_name = list(meta_model.get_spec().description.input)[0].name
-        result = meta_model.predict({input_name: encoded_input})
-        output_name = list(result.keys())[0]
-        return result[output_name][0]  # Remove batch dimension
+        raise ValueError("Unknown model type")
 
 
 def filter_by_location(

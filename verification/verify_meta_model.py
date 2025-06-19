@@ -31,13 +31,40 @@ def load_keras_meta_model(model_path: str):
     """Load the Keras meta-model with MDataLayer support."""
     
     class MDataLayer(tf.keras.layers.Layer):
-        """MDataLayer for the metadata model."""
+        """MDataLayer for the metadata model - performs sinusoidal encoding."""
         def __init__(self, embeddings=None, **kwargs):
             super().__init__(**kwargs)
             self.embeddings = embeddings
         
         def call(self, inputs):
-            return inputs
+            # inputs shape: (batch_size, 3) containing [lat, lon, week]
+            lat = inputs[:, 0:1]
+            lon = inputs[:, 1:2] 
+            week = inputs[:, 2:3]
+            
+            # Apply the encoding transformation
+            feats = []
+            
+            # Encode latitude (normalized to -1 to 1)
+            lat_norm = lat / 90.0
+            for k in range(1, 25):  # 24 frequencies
+                feats.append(tf.sin(k * np.pi * lat_norm))
+                feats.append(tf.cos(k * np.pi * lat_norm))
+            
+            # Encode longitude (normalized to -1 to 1)
+            lon_norm = lon / 180.0
+            for k in range(1, 25):  # 24 frequencies
+                feats.append(tf.sin(k * np.pi * lon_norm))
+                feats.append(tf.cos(k * np.pi * lon_norm))
+            
+            # Encode week (normalized to 0 to 1, cyclic)
+            week_norm = (week - 1) / 48.0
+            for k in range(1, 25):  # 24 frequencies
+                feats.append(tf.sin(k * 2 * np.pi * week_norm))
+                feats.append(tf.cos(k * 2 * np.pi * week_norm))
+            
+            # Concatenate all features
+            return tf.concat(feats, axis=-1)  # Output shape: (batch_size, 144)
         
         def get_config(self):
             config = super().get_config()
@@ -66,7 +93,7 @@ def get_test_cases():
         (51.5074, -0.1278, 24, "London (temperate, Europe)"),
         (-33.8688, 151.2093, 36, "Sydney (temperate, Southern Hemisphere)"),
         (1.3521, 103.8198, 6, "Singapore (tropical, equator)"),
-        (-22.9068, -43.1729, 52, "Rio (tropical, South America)"),
+        (-22.9068, -43.1729, 48, "Rio (tropical, South America)"),
         (64.2008, -149.4937, 1, "Fairbanks (arctic)"),
         (-54.8019, -68.3030, 30, "Ushuaia (sub-antarctic)"),
         (19.4326, -99.1332, 18, "Mexico City (high altitude)"),
@@ -191,8 +218,8 @@ def test_model_properties(keras_model, coreml_model):
     
     print(f"Keras model - Input: {keras_input_shape}, Output: {keras_output_shape}")
     
-    # Test with a simple input
-    test_input = np.random.randn(1, 144).astype(np.float32)
+    # Test with a simple input - now using 3 inputs (lat, lon, week)
+    test_input = np.array([[40.7128, -74.0060, 12]], dtype=np.float32)  # NYC, Spring
     
     try:
         keras_output = keras_model.predict(test_input, verbose=0)
