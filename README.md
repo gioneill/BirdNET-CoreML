@@ -80,7 +80,7 @@ source birdnet_clean_venv/bin/activate
 
 ## Converting Models to Core ML
 
-### Using the Fixed Export Script
+### Audio Model Conversion
 
 The main export script `coreml_export/export_coreml_gpt03.py` supports multiple input formats:
 
@@ -101,6 +101,50 @@ python coreml_export/export_coreml_gpt03.py \
 **Options:**
 - `--target ios15` - Minimum deployment target (ios15, macos12, tvos16)
 - `--keep_fp32` - Keep weights in FP32 (default is FP16 for smaller size)
+
+### Meta-Model Conversion (Location/Time → Species Priors)
+
+BirdNET includes a metadata model that predicts species occurrence probabilities based on location and time. This enables location-aware bird identification by filtering audio predictions to species likely to occur in a given area and season.
+
+**Convert the meta-model:**
+```bash
+python coreml_export/convert_meta_model_to_coreml.py \
+  --input coreml_export/input/meta-model.h5 \
+  --output coreml_export/output/meta-model.mlpackage
+```
+
+**Verify the conversion:**
+```bash
+python verification/verify_meta_model.py
+```
+
+This runs 17 comprehensive test cases across different geographic locations and seasons to ensure the CoreML model produces identical results to the original Keras model.
+
+### Using Location-Based Filtering
+
+The `meta_utils.py` module provides functions to use location data for species filtering:
+
+```python
+from coreml_export.meta_utils import (
+    encode_meta, 
+    get_species_priors, 
+    filter_by_location,
+    load_coreml_meta_model
+)
+
+# Load the meta-model
+meta_model = load_coreml_meta_model("output/meta-model.mlpackage")
+
+# Get species probabilities for NYC in March
+species_probs = get_species_priors(40.7128, -74.0060, 12, meta_model)
+
+# Filter audio predictions by location (BirdNET's current approach)
+filtered_scores, filtered_labels = filter_by_location(
+    audio_scores, species_labels, 40.7128, -74.0060, 12, meta_model
+)
+```
+
+**Note**: Future versions could implement Bayesian multiplication (`audio_scores * location_priors`) for more sophisticated probability combination, but this module focuses on BirdNET's current binary filtering approach.
 
 ### Legacy Scripts
 
