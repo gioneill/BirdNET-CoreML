@@ -15,23 +15,37 @@ from pathlib import Path
 
 import numpy as np
 import coremltools as ct
+
+# --- TensorFlow / Keras compatibility shim -------------------------------
 try:
     import tensorflow as tf
-    from tensorflow import keras
 except ImportError:
+    print("❌ TensorFlow not available. Please install TensorFlow and activate the proper environment.")
+    sys.exit(1)
+
+# Starting with TensorFlow 2.16 the bundled `tf.keras` namespace is no longer
+# exported.  If it is missing, fall back to the stand‑alone *Keras 3* package
+# and re‑export it so the rest of the script (written for `tf.keras`) keeps
+# working unchanged.
+if not hasattr(tf, "keras"):
     try:
-        import keras
-        import tensorflow as tf
+        import keras  # stand‑alone Keras 3
+        tf.keras = keras
     except ImportError:
-        print("❌ TensorFlow/Keras not available. Please install tensorflow and activate the proper environment.")
+        print(
+            "❌ TensorFlow ≥ 2.16 detected but the stand‑alone `keras` package "
+            "is not installed.  Run `pip install keras` or, alternatively, "
+            "pin TensorFlow <= 2.15."
+        )
         sys.exit(1)
+# -------------------------------------------------------------------------
 
 # Make repo‑root importable
 repo_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(repo_root))
 
 
-class MDataLayer(keras.layers.Layer):
+class MDataLayer(tf.keras.layers.Layer):
     """
     MDataLayer for the metadata model.
     Handles location/time data encoding for species occurrence prediction.
