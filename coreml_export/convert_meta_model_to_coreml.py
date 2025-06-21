@@ -148,6 +148,9 @@ def main():
         mlmodel = ct.convert(
             model,
             inputs=[meta_input],
+            compute_precision=(
+                ct.precision.FLOAT16
+            ),
         )
         
         # Create output directory if needed
