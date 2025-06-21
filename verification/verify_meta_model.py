@@ -16,6 +16,7 @@ Test cases include:
 
 import sys
 import os
+import argparse
 from pathlib import Path
 import numpy as np
 import tensorflow as tf
@@ -208,6 +209,51 @@ def compare_model_outputs(keras_model, coreml_model, test_cases, tolerance=1e-5)
     return comparison_passed, max_diff
 
 
+def compare_coreml_outputs(coreml_model1, coreml_model2, test_cases, tolerance=1e-5):
+    """Compare outputs between two CoreML models."""
+    print(f"\n=== Comparing CoreML Model Outputs (tolerance={tolerance}) ===")
+    
+    comparison_passed = True
+    max_diff = 0.0
+    
+    for lat, lon, week, description in test_cases:
+        try:
+            # Get predictions from both models
+            coreml_pred1 = get_species_priors(lat, lon, week, coreml_model1)
+            coreml_pred2 = get_species_priors(lat, lon, week, coreml_model2)
+            
+            # Check shapes match
+            if coreml_pred1.shape != coreml_pred2.shape:
+                print(f"❌ {description}: Shape mismatch - Model1: {coreml_pred1.shape}, Model2: {coreml_pred2.shape}")
+                comparison_passed = False
+                continue
+            
+            # Calculate maximum absolute difference
+            diff = np.abs(coreml_pred1 - coreml_pred2)
+            max_case_diff = np.max(diff)
+            max_diff = max(max_diff, max_case_diff)
+            
+            # Check if within tolerance
+            if max_case_diff <= tolerance:
+                print(f"✅ {description}: max_diff={max_case_diff:.2e}, mean_diff={np.mean(diff):.2e}")
+            else:
+                print(f"❌ {description}: max_diff={max_case_diff:.2e} > tolerance={tolerance:.2e}")
+                comparison_passed = False
+                
+                # Show some detail about where the differences are
+                worst_indices = np.argsort(diff)[-5:]  # Top 5 worst differences
+                print(f"   Worst differences at indices: {worst_indices}")
+                for idx in worst_indices:
+                    print(f"   Index {idx}: Model1={coreml_pred1[idx]:.6f}, Model2={coreml_pred2[idx]:.6f}, diff={diff[idx]:.2e}")
+            
+        except Exception as e:
+            print(f"❌ {description}: Exception during comparison - {e}")
+            comparison_passed = False
+    
+    print(f"\nOverall maximum difference: {max_diff:.2e}")
+    return comparison_passed, max_diff
+
+
 def test_model_properties(keras_model, coreml_model):
     """Test basic model properties."""
     print("\n=== Testing Model Properties ===")
@@ -243,23 +289,72 @@ def test_model_properties(keras_model, coreml_model):
     return True
 
 
+def _parse_args():
+    """Parse command line arguments."""
+    p = argparse.ArgumentParser(description="Verify BirdNET meta-model conversion accuracy")
+    
+    p.add_argument(
+        "--model1", 
+        default="coreml_export/input/meta-model.h5",
+        help="Path to first model (.h5 or .mlpackage)"
+    )
+    p.add_argument(
+        "--model2", 
+        default="coreml_export/output/meta-model.mlpackage",
+        help="Path to second model (.h5 or .mlpackage)"
+    )
+    p.add_argument(
+        "--tolerance", 
+        type=float, 
+        default=1e-5,
+        help="Tolerance for numerical comparison"
+    )
+    
+    return p.parse_args()
+
+
 def main():
     """Main verification function."""
     print("🔍 BirdNET Meta-Model Verification")
     print("=" * 50)
     
-    # Define paths
-    keras_model_path = repo_root / "coreml_export" / "input" / "meta-model.h5"
-    coreml_model_path = repo_root / "coreml_export" / "output" / "meta-model.mlpackage"
+    # Parse arguments
+    args = _parse_args()
+    
+    # Resolve paths
+    model1_path = Path(args.model1)
+    model2_path = Path(args.model2)
+    
+    # Make paths absolute if they're relative
+    if not model1_path.is_absolute():
+        model1_path = repo_root / model1_path
+    if not model2_path.is_absolute():
+        model2_path = repo_root / model2_path
     
     # Check if files exist
-    if not keras_model_path.exists():
-        print(f"❌ Keras model not found: {keras_model_path}")
+    if not model1_path.exists():
+        print(f"❌ Model 1 not found: {model1_path}")
         return 1
     
-    if not coreml_model_path.exists():
-        print(f"❌ CoreML model not found: {coreml_model_path}")
-        print("   Run the conversion script first: python convert_meta_model_to_coreml.py")
+    if not model2_path.exists():
+        print(f"❌ Model 2 not found: {model2_path}")
+        return 1
+    
+    # Auto-detect model types
+    model1_is_keras = model1_path.suffix.lower() in ['.h5', '.keras']
+    model2_is_keras = model2_path.suffix.lower() in ['.h5', '.keras']
+    model1_is_coreml = model1_path.suffix.lower() == '.mlpackage' or model1_path.name.endswith('.mlpackage')
+    model2_is_coreml = model2_path.suffix.lower() == '.mlpackage' or model2_path.name.endswith('.mlpackage')
+    
+    print(f"Model 1: {model1_path} ({'Keras' if model1_is_keras else 'CoreML' if model1_is_coreml else 'Unknown'})")
+    print(f"Model 2: {model2_path} ({'Keras' if model2_is_keras else 'CoreML' if model2_is_coreml else 'Unknown'})")
+    
+    # Validate model type combinations
+    if model1_is_keras and model2_is_keras:
+        print("❌ Cannot compare two Keras models. Please provide one Keras and one CoreML, or two CoreML models.")
+        return 1
+    elif not ((model1_is_keras or model1_is_coreml) and (model2_is_keras or model2_is_coreml)):
+        print("❌ Unrecognized model formats. Please provide .h5/.keras or .mlpackage files.")
         return 1
     
     # Test encoding function first
@@ -268,26 +363,54 @@ def main():
         print("\n❌ Encoding function tests failed!")
         return 1
     
-    # Load models
+    # Load models based on detected types
     try:
         print(f"\nLoading models...")
-        keras_model = load_keras_meta_model(str(keras_model_path))
-        coreml_model = load_coreml_meta_model(str(coreml_model_path))
+        
+        if model1_is_keras and model2_is_coreml:
+            # Original keras-vs-coreml comparison
+            keras_model = load_keras_meta_model(str(model1_path))
+            coreml_model = load_coreml_meta_model(str(model2_path))
+            comparison_type = "Keras vs CoreML"
+        elif model1_is_coreml and model2_is_keras:
+            # Swapped keras-vs-coreml comparison
+            keras_model = load_keras_meta_model(str(model2_path))
+            coreml_model = load_coreml_meta_model(str(model1_path))
+            comparison_type = "Keras vs CoreML (swapped)"
+        elif model1_is_coreml and model2_is_coreml:
+            # CoreML-vs-CoreML comparison
+            coreml_model = load_coreml_meta_model(str(model1_path))
+            coreml_model2 = load_coreml_meta_model(str(model2_path))
+            keras_model = None  # No keras model in this case
+            comparison_type = "CoreML vs CoreML"
+        
+        print(f"Comparison type: {comparison_type}")
+        
     except Exception as e:
         print(f"❌ Failed to load models: {e}")
         return 1
     
     # Test basic model properties
-    properties_ok = test_model_properties(keras_model, coreml_model)
-    if not properties_ok:
-        print("\n❌ Model property tests failed!")
-        return 1
+    if keras_model is not None:
+        properties_ok = test_model_properties(keras_model, coreml_model)
+        if not properties_ok:
+            print("\n❌ Model property tests failed!")
+            return 1
+    else:
+        # For CoreML-to-CoreML comparison, skip properties test
+        properties_ok = True
+        print("Skipping model properties test for CoreML-to-CoreML comparison")
     
     # Get test cases and run comparison
     test_cases = get_test_cases()
     print(f"\nRunning {len(test_cases)} test cases...")
     
-    comparison_ok, max_diff = compare_model_outputs(keras_model, coreml_model, test_cases)
+    if model1_is_coreml and model2_is_coreml:
+        # CoreML-to-CoreML comparison
+        comparison_ok, max_diff = compare_coreml_outputs(coreml_model, coreml_model2, test_cases, args.tolerance)
+    else:
+        # Keras-to-CoreML comparison
+        comparison_ok, max_diff = compare_model_outputs(keras_model, coreml_model, test_cases, args.tolerance)
     
     # Summary
     print("\n" + "=" * 50)
