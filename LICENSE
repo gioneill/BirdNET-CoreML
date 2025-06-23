@@ -1,6 +1,16 @@
-MIT License
+# BirdNET CoreML Fork - License
 
-Copyright (c) 2020 Stefan Kahl
+This project is a fork of [BirdNET-Analyzer](https://github.com/birdnet-team/BirdNET-Analyzer) with additional CoreML models.
+
+## Dual License Structure
+
+This project contains components under two different licenses:
+
+### 1. Source Code License
+
+**MIT License**
+
+Copyright (c) 2025 [Your Name]
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,3 +29,68 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+### 2. Model License
+
+**Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)**
+
+The CoreML models and any derivative models in this project are licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License.
+
+You are free to:
+- **Share** — copy and redistribute the material in any medium or format
+- **Adapt** — remix, transform, and build upon the material
+
+Under the following terms:
+- **Attribution** — You must give appropriate credit, provide a link to the license, and indicate if changes were made. You may do so in any reasonable manner, but not in any way that suggests the licensor endorses you or your use.
+- **NonCommercial** — You may not use the material for commercial purposes.
+- **ShareAlike** — If you remix, transform, or build upon the material, you must distribute your contributions under the same license as the original.
+
+For the full text of this license, see: https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode.en
+
+**Important Note**: All educational and research purposes are considered non-commercial use and it is therefore freely permitted to use these models in any way for such purposes.
+
+## Original BirdNET Attribution
+
+This work is based on BirdNET-Analyzer developed by the K. Lisa Yang Center for Conservation Bioacoustics at the Cornell Lab of Ornithology in collaboration with Chemnitz University of Technology.
+
+**Original BirdNET Citation:**
+```
+@article{kahl2021birdnet,
+  title={BirdNET: A deep learning solution for avian diversity monitoring},
+  author={Kahl, Stefan and Wood, Connor M and Eibl, Maximilian and Klinck, Holger},
+  journal={Ecological Informatics},
+  volume={61},
+  pages={101236},
+  year={2021},
+  publisher={Elsevier}
+}
+```
+
+## Component-Specific Licensing
+
+- **Source code** (Python scripts, configuration files, documentation): MIT License
+- **Original BirdNET models**: CC BY-NC-SA 4.0 (from original BirdNET-Analyzer project)
+- **New CoreML models**: CC BY-NC-SA 4.0 (derivative works)
+- **Model conversion scripts**: MIT License
+- **Documentation and examples**: MIT License
+
+## Usage Guidelines
+
+1. **For Source Code**: You may use, modify, and distribute the source code under the MIT License terms.
+
+2. **For Models**: You must comply with CC BY-NC-SA 4.0 terms:
+   - Provide attribution to both the original BirdNET team and this fork
+   - Use only for non-commercial purposes (research and education are considered non-commercial)
+   - Share any derivative models under the same CC BY-NC-SA 4.0 license
+
+3. **Combined Works**: If you use both source code and models together, you must comply with both license requirements.
+
+## Contact
+
+For questions about licensing or commercial use of the models, please contact:
+- Original BirdNET team: ccb-birdnet@cornell.edu
+- This fork: [Your Email]
+
+---
+
+**Disclaimer**: This software and models are provided "as is" without warranty of any kind. The creators assume no responsibility for any damages or legal issues arising from the use of this software.
