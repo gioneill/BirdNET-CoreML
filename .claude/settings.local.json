@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(python3:*)",
+      "Bash(source:*)",
+      "Bash(python:*)",
+      "Bash(find:*)",
+      "WebFetch(domain:blog.src.rip)",
+      "Bash(mkdir:*)",
+      "Bash(chmod:*)",
+      "Bash(echo $PATH)",
+      "Bash(dos2unix:*)",
+      "Bash(sed:*)",
+      "Bash(debug-commit-msg)",
+      "Bash(~/.local/bin/debug-commit-msg:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": []
+  }
+}

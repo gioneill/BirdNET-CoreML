@@ -205,7 +205,7 @@ def main():
         inputs=[audio_input],
         # minimum_deployment_target=getattr(ct.target, target_attr),
         compute_precision=(
-            ct.precision.FLOAT16
+            ct.precision.FLOAT32 if args.keep_fp32 else ct.precision.FLOAT16
         ),
     )
     mlmodel.save(args.out_path)
