@@ -8,14 +8,7 @@ This repository provides tools to convert BirdNET's bird detection models to App
 
 1. **Audio Model Conversion**: Convert the main BirdNET acoustic model that identifies bird species from audio
 2. **Metadata Model Conversion**: Convert the location/time-based model that filters species by geographic occurrence
-3. **Model Verification**: Comprehensive tools to validate that converted models produce identical results
-
-## Requirements
-
-- **macOS** (Core ML requires Apple frameworks)  
-- **Python 3.11+**  
-- **TensorFlow 2.15.0** (macOS version)
-- **CoreML Tools 8.3.0**
+3. **Model Verification**: Tools to validate that converted models produce identical results
 
 ## Quick Setup
 
@@ -36,7 +29,7 @@ This creates a clean virtual environment with all required dependencies.
 The main conversion script handles both Keras/H5 models and TensorFlow SavedModel directories:
 
 ```bash
-# Convert a Keras/H5 model
+# Convert the included Keras/H5 model
 python coreml_export/convert_keras_to_coreml.py \
   --in_path coreml_export/input/audio-model.h5 \
   --out_path coreml_export/output/audio-model.mlpackage
@@ -99,7 +92,7 @@ filtered_scores, filtered_labels = filter_by_location(
 
 ## Model Verification
 
-The repository includes comprehensive verification tools:
+The repository includes verification tools:
 
 ### Compare Model Outputs
 
@@ -139,10 +132,10 @@ BirdNET-CoreML/
 │   ├── compare_model_predictions.py  # Compare outputs across formats
 │   ├── verify_meta_models.py   # Test metadata model
 │   └── bird_sounds/            # Test audio samples
-├── custom_layers.py            # BirdNET's custom Keras layers
 ├── requirements.txt            # Python dependencies
 ├── setup_environment.sh        # Automated setup script
 └── deprecated/                 # Legacy scripts no longer needed
+    └── custom_layers.py        # Legacy SimpleSpecLayer (no longer used)
 ```
 
 ## Technical Details
@@ -184,14 +177,58 @@ This warning can be safely ignored - the conversion has been thoroughly tested.
 The converter automatically handles BirdNET's custom layers. If you encounter issues:
 - Ensure the correct MelSpecLayerSimple implementation is used (typically `MelSpecLayerSimple_fixed.py`)
 - The fixed version avoids CoreML-incompatible operations while maintaining identical functionality
-- Both `custom_layers.py` (for SimpleSpecLayer) and the MelSpec layer are required for conversion
+- The SimpleSpecLayer from `custom_layers.py` existed in early versions of BirdNET but is no longer used in current models
 
-## License
+## Additional Notes on SimpleSpecLayer vs MelSpecLayerSimple
 
-This project is licensed under the MIT License. The BirdNET models themselves are subject to their original license terms.
+SimpleSpecLayer (deprecated):
+- Creates a basic linear spectrogram (not mel-scaled)
+- Uses STFT to get frequency bins linearly spaced
+- Output shape: (257, 384) - likely 257 frequency bins
+- Simple magnitude scaling and normalization
+- No frequency warping to match human perception
+
+MelSpecLayerSimple:
+- Creates a mel-spectrogram (perceptually-scaled frequencies)
+- Uses mel filterbank to convert linear frequencies to mel scale
+- Includes frequency range parameters (fmin, fmax)
+- More sophisticated preprocessing (normalization to [-1, 1] range)
+- Better suited for audio ML tasks involving human-relevant sounds
+
+Why MelSpecLayerSimple_fixed.py was needed
+
+The key issue is on line 51 of the fixed version:
+
+# Convert complex to magnitude spectrum manually (avoids ComplexAbs
+  op)
+real = tf.math.real(complex_spec)
+imag = tf.math.imag(complex_spec)
+spec = tf.math.sqrt(real * real + imag * imag)
+
+The original MelSpecLayerSimple.py likely used:
+spec = tf.abs(complex_spec)  # This doesn't work with CoreML!
+
+CoreML doesn't support the ComplexAbs operation that TensorFlow
+generates when you call tf.abs() on complex numbers. The "fixed"
+version manually computes the magnitude using the mathematical
+formula |z| = sqrt(real² + imag²), which CoreML can handle since it
+  only uses basic arithmetic operations.
+
+Evolution of BirdNET models
+
+It appears BirdNET evolved from:
+1. Early versions: Used SimpleSpecLayer (basic spectrograms)
+2. Later versions: Switched to MelSpecLayerSimple (mel
+spectrograms) for better performance
+3. CoreML conversion: Required the "fixed" version to avoid
+unsupported operations
+
+This evolution makes sense because mel spectrograms are generally
+superior for audio ML tasks - they better match how humans (and
+likely birds) perceive frequency differences, with higher
+resolution in lower frequencies where most biological sounds occur.
 
 ## Acknowledgments
 
 - [BirdNET](https://github.com/kahst/BirdNET-Analyzer) team for the original models
-- Apple for CoreML Tools
-- Contributors to this CoreML conversion project
+- [BirdNET-CoreML](https://github.com/kahst/BirdNET-CoreML) (No longer public, under MIT)
