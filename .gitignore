@@ -129,3 +129,6 @@ dmypy.json
 .pyre/
 birdnet310/
 birdnet311/
+
+# Claude Code settings
+.claude/
