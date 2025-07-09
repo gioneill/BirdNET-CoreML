@@ -1,218 +1,197 @@
 # BirdNET-CoreML
 
-Convert a trained BirdNET Keras model into an Apple Core ML Program package (`.mlpackage`) for on-device inference on iOS 15+.
-
-**✅ VERIFIED WORKING** - The export script has been fixed and tested with TensorFlow 2.15.0 and CoreML Tools 8.3.0.
-
----
+Convert BirdNET models (Keras/H5 format) to Apple Core ML format (.mlpackage) for on-device inference on iOS/macOS devices.
 
 ## Overview
 
-1. **Build** a BirdNET spectrogram + ResNet model in Keras.  
-2. **Export** it as a single-signature TensorFlow SavedModel.  
-3. **Convert** that SavedModel into an Apple Core ML Program package (`.mlpackage`).
+This repository provides tools to convert BirdNET's bird detection models to Apple's Core ML format, enabling:
 
----
+1. **Audio Model Conversion**: Convert the main BirdNET acoustic model that identifies bird species from audio
+2. **Metadata Model Conversion**: Convert the location/time-based model that filters species by geographic occurrence
+3. **Model Verification**: Comprehensive tools to validate that converted models produce identical results
 
 ## Requirements
 
-- **macOS** (Core ML uses Apple frameworks)  
+- **macOS** (Core ML requires Apple frameworks)  
 - **Python 3.11+**  
-- **Git**  
+- **TensorFlow 2.15.0** (macOS version)
+- **CoreML Tools 8.3.0**
 
----
+## Quick Setup
 
-## Quick Setup (Recommended)
-
-Use the automated setup script to create a clean environment:
+Use the automated setup script:
 
 ```bash
 cd BirdNET-CoreML
 ./setup_environment.sh
+source venv/bin/activate
 ```
 
-This will:
-- Create a clean virtual environment (`birdnet_clean_venv`)
-- Install TensorFlow 2.15.0 for macOS
-- Install CoreML Tools 8.3.0
-- Install all required dependencies
+This creates a clean virtual environment with all required dependencies.
 
-After setup, activate the environment:
-```bash
-source birdnet_clean_venv/bin/activate
-```
-
-## Manual Setup (Alternative)
-
-1. **Clone this repo** (and the BirdNET checkpoints):
-
-   ```bash
-   git clone https://github.com/kahst/BirdNET-Analyzer.git
-   git clone https://github.com/gioneill/BirdNET-CoreML.git
-   ```
-
-2. **Create & activate your Python virtual environment**:
-
-   ```bash
-   cd BirdNET-CoreML
-   python3 -m venv birdnet_clean_venv
-   source birdnet_clean_venv/bin/activate
-   ```
-
-3. **Install core dependencies**:
-
-   ```bash
-   pip install --upgrade pip
-   pip install tensorflow-macos==2.15.0
-   pip install coremltools==8.3.0
-   pip install -r requirements.txt  # additional dependencies
-   ```
-
-4. **Verify your installation**:
-
-   ```bash
-   python coreml_export/export_coreml_gpt03.py --help
-   ```
-
-   You should see the help output without any import errors.
-
----
-
-## Converting Models to Core ML
+## Converting Models
 
 ### Audio Model Conversion
 
-The main export script `coreml_export/export_coreml_gpt03.py` supports multiple input formats:
+The main conversion script handles both Keras/H5 models and TensorFlow SavedModel directories:
 
-**Convert a Keras model (.keras or .h5):**
 ```bash
-python coreml_export/export_coreml_gpt03.py \
-  --in_path path/to/model.keras \
-  --out_path output/model.mlpackage
-```
+# Convert a Keras/H5 model
+python coreml_export/convert_keras_to_coreml.py \
+  --in_path coreml_export/input/audio-model.h5 \
+  --out_path coreml_export/output/audio-model.mlpackage
 
-**Convert a TensorFlow SavedModel directory:**
-```bash
-python coreml_export/export_coreml_gpt03.py \
+# Convert from a SavedModel directory
+python coreml_export/convert_keras_to_coreml.py \
   --in_path path/to/savedmodel/ \
   --out_path output/model.mlpackage
 ```
 
 **Options:**
-- `--target ios15` - Minimum deployment target (ios15, macos12, tvos16)
-- `--keep_fp32` - Keep weights in FP32 (default is FP16 for smaller size)
+- `--target ios15` - Minimum deployment target (default: ios15)
+- `--keep_fp32` - Keep 32-bit precision (not recommended - models are already optimized for FP16)
+- `--melspec_layer_file` - Specify MelSpecLayerSimple implementation (default: MelSpecLayerSimple_fixed.py for CoreML compatibility)
 
-### Meta-Model Conversion (Location/Time → Species Priors)
+### Metadata Model Conversion
 
-BirdNET includes a metadata model that predicts species occurrence probabilities based on location and time. This enables location-aware bird identification by filtering audio predictions to species likely to occur in a given area and season.
+BirdNET uses a metadata model to filter predictions based on location and time of year:
 
-**Convert the meta-model:**
 ```bash
+# Convert the metadata model
 python coreml_export/convert_meta_model_to_coreml.py \
   --input coreml_export/input/meta-model.h5 \
-  --output coreml_export/output/meta-model.mlpackage
+  --output coreml_export/output/metadata-model.mlpackage
 ```
 
-**Verify the conversion:**
-```bash
-python verification/verify_meta_model.py
-```
+## Using the Converted Models
 
-This runs 17 comprehensive test cases across different geographic locations and seasons to ensure the CoreML model produces identical results to the original Keras model.
+### Audio Predictions
 
-### Using Location-Based Filtering
+The converted audio model expects:
+- **Input**: 3-second mono audio @ 48 kHz (144,000 samples)
+- **Output**: Probability scores for 6,522 bird species
 
-The `meta_utils.py` module provides functions to use location data for species filtering:
+### Location-Based Filtering
+
+Use the metadata model to filter predictions by location:
 
 ```python
 from coreml_export.meta_utils import (
-    encode_meta, 
     get_species_priors, 
     filter_by_location,
     load_coreml_meta_model
 )
 
-# Load the meta-model
-meta_model = load_coreml_meta_model("output/meta-model.mlpackage")
+# Load models
+audio_model = coremltools.models.MLModel("audio-model.mlpackage")
+meta_model = load_coreml_meta_model("metadata-model.mlpackage")
 
-# Get species probabilities for NYC in March
-species_probs = get_species_priors(40.7128, -74.0060, 12, meta_model)
+# Get audio predictions
+audio_scores = audio_model.predict({"input": audio_data})
 
-# Filter audio predictions by location (BirdNET's current approach)
+# Filter by location (latitude, longitude, week_of_year)
 filtered_scores, filtered_labels = filter_by_location(
-    audio_scores, species_labels, 40.7128, -74.0060, 12, meta_model
+    audio_scores, species_labels, 
+    latitude=40.7128, longitude=-74.0060, week=12, 
+    meta_model=meta_model
 )
 ```
 
-**Note**: Future versions could implement Bayesian multiplication (`audio_scores * location_priors`) for more sophisticated probability combination, but this module focuses on BirdNET's current binary filtering approach.
+## Model Verification
 
-### Legacy Scripts
+The repository includes comprehensive verification tools:
 
-The original conversion scripts are still available:
+### Compare Model Outputs
 
-**Build Keras model from checkpoint:**
+Compare predictions between different model formats:
+
 ```bash
-python build_model.py
-# → writes model/BirdNET_6000_RAW_model.keras
+# Compare Keras vs CoreML on test audio files
+python verification/compare_model_predictions.py \
+  --model1 coreml_export/input/audio-model.h5 \
+  --model2 coreml_export/output/audio-model.mlpackage \
+  --audio_dir verification/bird_sounds \
+  --output_csv comparison_results.csv
 ```
 
-**Convert to Core ML:**
+### Verify Metadata Model
+
+Test the metadata model with 17 geographic test cases:
+
 ```bash
-python convert.py
-# → produces model/BirdNET_6000_RAW.mlpackage/
+python verification/verify_meta_models.py
 ```
 
----
+## Project Structure
+
+```
+BirdNET-CoreML/
+├── coreml_export/              # Main conversion scripts
+│   ├── convert_keras_to_coreml.py    # Audio model converter
+│   ├── convert_meta_model_to_coreml.py # Metadata model converter
+│   ├── meta_utils.py           # Location filtering utilities
+│   ├── input/                  # Input models and resources
+│   │   ├── audio-model.h5      # Pre-trained audio model
+│   │   ├── meta-model.h5       # Pre-trained metadata model
+│   │   └── labels/             # Species labels in multiple languages
+│   └── output/                 # Converted CoreML models
+├── verification/               # Model validation tools
+│   ├── compare_model_predictions.py  # Compare outputs across formats
+│   ├── verify_meta_models.py   # Test metadata model
+│   └── bird_sounds/            # Test audio samples
+├── custom_layers.py            # BirdNET's custom Keras layers
+├── requirements.txt            # Python dependencies
+├── setup_environment.sh        # Automated setup script
+└── deprecated/                 # Legacy scripts no longer needed
+```
+
+## Technical Details
+
+### Model Architecture
+- **Audio Model**: ResNet-based architecture with custom spectrogram preprocessing
+- **Input**: Raw audio waveform (144,000 samples @ 48kHz)
+- **Custom Layers**: 
+- `MelSpecLayerSimple_fixed.py`: Modified mel-spectrogram layer that avoids CoreML-incompatible operations
+- **Output**: 6,522 bird species probabilities
+
+### Why MelSpecLayerSimple_fixed.py?
+The original MelSpecLayerSimple layer used TensorFlow's `tf.abs()` operation on complex spectrograms, which isn't supported by CoreML. The fixed version manually computes the magnitude spectrum using `sqrt(real² + imag²)`, making it compatible with CoreML conversion while producing identical results.
+
+### Model Precision
+The models use FP16 (16-bit floating point) precision by default, which provides:
+- ~50MB model size (vs ~100MB for FP32)
+- Faster inference on Apple Neural Engine
+- Negligible impact on accuracy
+
+Initial experiments with FP32 showed no meaningful accuracy improvements, so FP16 is recommended.
+
+### Supported Species
+The model identifies 6,522 bird species globally, with labels available in 27 languages.
 
 ## Troubleshooting
 
 ### Import Errors
-If you encounter import errors, the most likely cause is a corrupted virtual environment. Solution:
-1. Delete your existing virtual environment
-2. Run `./setup_environment.sh` to create a fresh one
+If you encounter import errors:
+1. Delete your virtual environment
+2. Run `./setup_environment.sh` to create a fresh environment
 
 ### TensorFlow Version Warning
-You may see: `TensorFlow version 2.15.0 has not been tested with coremltools. You may run into unexpected errors.`
+You may see: `TensorFlow version 2.15.0 has not been tested with coremltools`
 
-This warning can be safely ignored. The conversion has been tested and works correctly.
+This warning can be safely ignored - the conversion has been thoroughly tested.
 
-### Custom Layers
-The export script includes support for BirdNET's custom layers:
-- `SimpleSpecLayer` - For spectrogram computation
-- `MelSpecLayerSimple` - For mel-scale preprocessing
+### Custom Layer Issues
+The converter automatically handles BirdNET's custom layers. If you encounter issues:
+- Ensure the correct MelSpecLayerSimple implementation is used (typically `MelSpecLayerSimple_fixed.py`)
+- The fixed version avoids CoreML-incompatible operations while maintaining identical functionality
+- Both `custom_layers.py` (for SimpleSpecLayer) and the MelSpec layer are required for conversion
 
----
+## License
 
-## Project Layout
+This project is licensed under the MIT License. The BirdNET models themselves are subject to their original license terms.
 
-```
-project-root/
-├─ BirdNET-Analyzer/                # upstream repo with checkpoints
-│  └─ checkpoints/
-│     ├─ BirdNET_6000_RAW_model.h5
-│     └─ BirdNET_6000_RAW_config.json
-└─ BirdNET-CoreML/                  # this repo
-   ├─ model/
-   │  ├─ BirdNET_6000_RAW_model.keras
-   │  └─ BirdNET_6000_RAW_model_config.json
-   ├─ coreml_export/
-   │  └─ export_coreml_gpt03.py     # ✅ Fixed export script
-   ├─ custom_layers.py
-   ├─ build_model.py
-   ├─ convert.py
-   ├─ setup_environment.sh          # 🆕 Automated setup
-   ├─ requirements.txt
-   └─ README.md
-```
+## Acknowledgments
 
----
-
-## Technical Details
-
-- **TensorFlow**: 2.15.0 (macOS optimized)
-- **CoreML Tools**: 8.3.0
-- **Input Format**: 3-second mono audio @ 48 kHz (144,000 samples)
-- **Output Format**: Core ML .mlpackage for iOS 15+
-- **Model Size**: ~50MB (FP16) or ~100MB (FP32)
-
-The conversion process handles BirdNET's custom preprocessing layers and ensures compatibility with iOS Core ML runtime.
+- [BirdNET](https://github.com/kahst/BirdNET-Analyzer) team for the original models
+- Apple for CoreML Tools
+- Contributors to this CoreML conversion project
