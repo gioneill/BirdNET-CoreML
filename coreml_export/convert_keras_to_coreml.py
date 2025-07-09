@@ -11,20 +11,9 @@ from pathlib import Path
 import coremltools as ct
 import tensorflow as tf
 
-# Make repo‑root importable so that `custom_layers` and `coreml_export.input` resolve
+# Make repo‑root importable so that `coreml_export.input` resolve
 repo_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(repo_root))
-
-# Import with more explicit paths
-try:
-    from custom_layers import SimpleSpecLayer
-except ImportError:
-    # Try importing from the current directory structure
-    import importlib.util
-    spec = importlib.util.spec_from_file_location("custom_layers", repo_root / "custom_layers.py")
-    custom_layers_module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(custom_layers_module)
-    SimpleSpecLayer = custom_layers_module.SimpleSpecLayer
 
 
 def _load_melspec_layer(filename: str):
@@ -40,38 +29,6 @@ def _load_melspec_layer(filename: str):
     return melspec_module.MelSpecLayerSimple
 
 
-class LegacySimpleSpecLayer(SimpleSpecLayer):
-    """
-    Wrapper layer that keeps compatibility with very old checkpoints
-    that passed `fmin` / `fmax` into the constructor.
-    """
-
-    def __init__(
-        self,
-        sample_rate: int = 48_000,
-        spec_shape: tuple[int, int] = (257, 384),
-        frame_step: int = 374,
-        frame_length: int = 512,
-        fmin: int = 0,
-        fmax: int = 3_000,
-        data_format: str = "channels_last",
-        **kwargs,
-    ):
-        super().__init__(
-            sample_rate=sample_rate,
-            spec_shape=spec_shape,
-            frame_step=frame_step,
-            frame_length=frame_length,
-            data_format=data_format,
-            **kwargs,
-        )
-        self.fmin = fmin
-        self.fmax = fmax
-
-    def get_config(self):
-        cfg = super().get_config()
-        cfg.update({"fmin": self.fmin, "fmax": self.fmax})
-        return cfg
 
 
 class MDataLayer(tf.keras.layers.Layer):
@@ -136,7 +93,6 @@ def _load_any_model(path: Path, melspec_layer_class):
     Load either a Keras model (.keras/.h5) or a TensorFlow SavedModel directory.
     """
     custom = {
-        "SimpleSpecLayer": LegacySimpleSpecLayer,
         "MelSpecLayerSimple": melspec_layer_class,
     }
 
