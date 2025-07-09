@@ -230,5 +230,8 @@ resolution in lower frequencies where most biological sounds occur.
 
 ## Acknowledgments
 
+The successful conversion of BirdNET’s pioneering work in bioacoustics to Apple’s CoreML has been a long-standing dream of mine. It would not have been possible without the incredible work of the BirdNET team—thank you. I also can’t overstate the value of large language models in helping me understand and work through topics and technologies that would have taken me months to ramp up on. I simply wouldn’t have had the time otherwise. I look forward to pursuing more passion projects on Apple devices using these technologies.
+
 - [BirdNET](https://github.com/kahst/BirdNET-Analyzer) team for the original models
+- [Models](https://birdnet-team.github.io/BirdNET-Analyzer/models.html)
 - [BirdNET-CoreML](https://github.com/kahst/BirdNET-CoreML) (No longer public, under MIT)
